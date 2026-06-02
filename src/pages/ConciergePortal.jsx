@@ -133,7 +133,7 @@ export default function ConciergePortal() {
             onClick={() => setShowNewOrder(true)}
             className="flex items-center gap-2 px-6 py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl shadow-lg transition-all"
           >
-            <span className="text-lg">+</span> New Pickup Request
+            New Pickup Request
           </button>
         </div>
 
@@ -141,7 +141,7 @@ export default function ConciergePortal() {
         <div className="space-y-3">
           {activeOrders.length === 0 && (
             <div className="text-center py-16 text-washwell-gray">
-              <div className="text-5xl mb-3">🧺</div>
+              <div className="text-5xl mb-3"></div>
               <p className="font-semibold">No active orders</p>
             </div>
           )}
@@ -181,7 +181,7 @@ export default function ConciergePortal() {
                       onClick={() => navigate(`/track/${order.id}`)}
                       className="px-4 py-2 bg-washwell-black hover:opacity-90 text-white text-sm font-bold rounded-xl transition-all"
                     >
-                      🚚 Track
+                      Track
                     </button>
                   )}
                 </div>

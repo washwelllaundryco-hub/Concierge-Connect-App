@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { PRICING_TIERS } from "../constants";
 
 const STATUS_CONFIG = {
-  pending: { label: "Order Received", icon: "📝", step: 1 },
-  picked_up: { label: "Picked Up", icon: "🚗", step: 2 },
-  in_wash: { label: "In Wash", icon: "💧", step: 3 },
-  drying: { label: "Drying", icon: "🌬️", step: 4 },
-  folding: { label: "Folding", icon: "👕", step: 5 },
-  out_for_delivery: { label: "Out for Delivery", icon: "🚚", step: 6 },
-  delivered: { label: "Delivered", icon: "✓", step: 7 },
+  pending:          { label: "Order Received",    step: 1 },
+  picked_up:        { label: "Picked Up",          step: 2 },
+  in_wash:          { label: "In Wash",            step: 3 },
+  drying:           { label: "Drying",             step: 4 },
+  folding:          { label: "Folding",            step: 5 },
+  out_for_delivery: { label: "Out for Delivery",   step: 6 },
+  delivered:        { label: "Delivered",          step: 7 },
 };
 
 const TOTAL_STEPS = 7;
@@ -47,7 +47,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
         if (update.type === "sustainability_update") setSustainability(update.data);
       };
     } catch {
-      // WebSocket unavailable in dev/static preview — fall through to mock data
+      // fall through to static data
     }
     return () => ws?.close();
   }, []);
@@ -76,7 +76,8 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
 
   return (
     <div className="min-h-screen bg-washwell-cream font-body">
-      {/* Header / Pickup CTA */}
+
+      {/* Header */}
       <section className="px-6 py-12 md:py-16">
         <div className="max-w-4xl mx-auto text-center">
           <div className="flex justify-center mb-8">
@@ -87,7 +88,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
             Welcome back, {user.firstName}
           </h1>
           <p className="text-lg text-washwell-gray-dark mb-2 font-medium">
-            {user.hotelName} • Room {user.roomNumber}
+            {user.hotelName} &middot; Room {user.roomNumber}
           </p>
           <p className="text-sm text-washwell-gray uppercase tracking-widest font-semibold mb-10">
             Washwell Laundry Co.
@@ -111,12 +112,9 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                         : "bg-white border-washwell-gray-light hover:border-washwell-green/50 hover:bg-washwell-green-pale/40"
                     }`}
                   >
-                    <span className="text-2xl flex-shrink-0">{tier.icon}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className={`font-display font-bold text-sm ${isSelected ? "text-washwell-black" : "text-washwell-black"}`}>
-                          {name}
-                        </span>
+                        <span className="font-display font-bold text-sm text-washwell-black">{name}</span>
                         {tier.recommended && (
                           <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-washwell-green text-white rounded-full">
                             Popular
@@ -145,22 +143,18 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
 
           <button
             onClick={handleRequestPickup}
-            className="group relative w-full md:w-auto px-16 py-6 bg-washwell-green hover:bg-washwell-green-dark text-white font-display font-bold text-2xl rounded-2xl shadow-2xl transition-all duration-300 hover:scale-105"
+            className="w-full md:w-auto px-16 py-5 bg-washwell-green hover:bg-washwell-green-dark text-white font-display font-bold text-xl rounded-2xl shadow-xl transition-all duration-300 tracking-wide uppercase"
           >
-            <span className="relative z-10 flex items-center justify-center gap-4">
-              <span className="text-3xl">🧺</span>
-              Request Pickup
-            </span>
-            <div className="absolute inset-0 rounded-2xl bg-washwell-green opacity-0 group-hover:opacity-20 blur-xl transition-opacity duration-300" />
+            Request Pickup
           </button>
 
-          <p className="mt-6 text-sm text-washwell-gray-dark">
-            Payment processed securely via Stripe
+          <p className="mt-4 text-xs text-washwell-gray uppercase tracking-widest">
+            Secured by Stripe
           </p>
         </div>
       </section>
 
-      {/* Active Order + Progress */}
+      {/* Active Order */}
       {activeOrder && currentStatus && (
         <section className="bg-white px-6 py-16 border-t-2 border-b-2 border-washwell-gray-light">
           <div className="max-w-4xl mx-auto">
@@ -176,33 +170,29 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
               </h2>
               <p className="text-washwell-gray-dark">
                 Estimated delivery:{" "}
-                <span className="font-semibold">
-                  {etaHours}h {etaMins}m
-                </span>
+                <span className="font-semibold">{etaHours}h {etaMins}m</span>
               </p>
             </div>
 
             {/* Progress bar */}
             <div className="mb-12">
-              <div className="relative h-3 bg-washwell-gray-light rounded-full overflow-hidden">
+              <div className="relative h-2 bg-washwell-gray-light rounded-full overflow-hidden">
                 <div
-                  className="absolute h-full bg-gradient-to-r from-washwell-green to-washwell-green-light transition-all duration-1000 ease-out rounded-full"
+                  className="absolute h-full bg-washwell-green transition-all duration-1000 ease-out rounded-full"
                   style={{ width: `${progressPct}%` }}
-                >
-                  <div className="absolute inset-0 bg-white/20 animate-pulse" />
-                </div>
+                />
               </div>
               <div className="flex justify-between items-center mt-3">
                 <span className="text-sm font-mono font-bold text-washwell-green">
                   {Math.round(progressPct)}%
                 </span>
                 <span className="text-sm font-semibold text-washwell-gray-dark">
-                  {currentStatus.step} of {TOTAL_STEPS} steps
+                  {currentStatus.step} of {TOTAL_STEPS}
                 </span>
               </div>
             </div>
 
-            {/* Step icons */}
+            {/* Steps */}
             <div className="grid grid-cols-4 md:grid-cols-7 gap-3">
               {Object.entries(STATUS_CONFIG).map(([key, config]) => {
                 const isActive = config.step === currentStatus.step;
@@ -210,27 +200,28 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                 return (
                   <div
                     key={key}
-                    className={`relative flex flex-col items-center transition-all duration-300 ${isActive ? "scale-110" : ""}`}
+                    className={`flex flex-col items-center gap-2 transition-all duration-300 ${isActive ? "scale-105" : ""}`}
                   >
-                    <div
-                      className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-2 transition-all duration-300 ${
-                        isCompleted || isActive
-                          ? "bg-washwell-green shadow-lg border-2 border-washwell-green"
-                          : "bg-white border-2 border-washwell-gray-light"
-                      }`}
-                    >
-                      {isCompleted ? "✓" : config.icon}
+                    <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                      isCompleted ? "bg-washwell-green border-washwell-green" :
+                      isActive ? "bg-washwell-green border-washwell-green" :
+                      "bg-white border-washwell-gray-light"
+                    }`}>
+                      {isCompleted ? (
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <span className={`text-xs font-bold ${isActive ? "text-white" : "text-washwell-gray"}`}>
+                          {config.step}
+                        </span>
+                      )}
                     </div>
-                    <span
-                      className={`text-xs font-semibold text-center leading-tight ${
-                        isActive ? "text-washwell-black" : "text-washwell-gray"
-                      }`}
-                    >
+                    <span className={`text-xs font-semibold text-center leading-tight ${
+                      isActive ? "text-washwell-black" : "text-washwell-gray"
+                    }`}>
                       {config.label}
                     </span>
-                    {isActive && (
-                      <div className="absolute -bottom-2 w-2 h-2 bg-washwell-green rounded-full animate-pulse" />
-                    )}
                   </div>
                 );
               })}
@@ -238,16 +229,15 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
 
             <div className="mt-12 text-center p-6 bg-washwell-cream rounded-2xl border-2 border-washwell-green">
               <p className="text-lg font-semibold text-washwell-black">
-                <span className="text-2xl mr-2">{currentStatus.icon}</span>
                 Your laundry is currently{" "}
-                <span className="text-washwell-green">{currentStatus.label.toLowerCase()}</span>
+                <span className="text-washwell-green font-bold">{currentStatus.label}</span>
               </p>
               {activeOrder.status === "out_for_delivery" && (
                 <button
                   onClick={() => onTrackDelivery(activeOrder.id)}
-                  className="mt-4 inline-flex items-center gap-2 px-8 py-3 bg-washwell-black hover:opacity-90 text-white font-display font-bold rounded-xl shadow-lg transition-all"
+                  className="mt-4 inline-flex items-center gap-2 px-8 py-3 bg-washwell-black hover:opacity-90 text-white font-display font-bold rounded-xl shadow-lg transition-all uppercase tracking-wide text-sm"
                 >
-                  <span>🚚</span> Track My Delivery
+                  Track Delivery
                 </button>
               )}
             </div>
@@ -256,51 +246,44 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
       )}
 
       {/* Sustainability */}
-      <section className="bg-washwell-black px-6 py-16 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-washwell-green/10 via-transparent to-washwell-green/5 pointer-events-none" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-washwell-green/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
-
-        <div className="max-w-4xl mx-auto relative z-10">
+      <section className="bg-washwell-black px-6 py-16">
+        <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
             <div className="inline-flex items-center gap-2 mb-4">
-              <div className="w-3 h-3 bg-washwell-green rounded-full animate-pulse" />
-              <span className="text-washwell-gray text-sm font-bold uppercase tracking-widest">
+              <div className="w-2 h-2 bg-washwell-green rounded-full animate-pulse" />
+              <span className="text-washwell-gray text-xs font-bold uppercase tracking-widest">
                 Live Updates
               </span>
             </div>
             <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-3">
               Your Environmental Impact
             </h2>
-            <p className="text-washwell-gray text-lg">
+            <p className="text-washwell-gray">
               {sustainability.totalOrders} orders completed
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              { emoji: "💧", value: sustainability.waterSavedGallons, label: "Gallons Saved", sub: `≈ ${Math.round(sustainability.waterSavedGallons / 17.2)} showers` },
-              { emoji: "⚡", value: sustainability.energySavedKwh, label: "kWh Saved", sub: `≈ ${Math.round(sustainability.energySavedKwh / 0.012)} phone charges` },
-              { emoji: "🌱", value: sustainability.co2AvoidedLbs, label: "Lbs CO₂ Avoided", sub: "Making the planet greener" },
-            ].map(({ emoji, value, label, sub }) => (
+              { metric: "H₂O", value: sustainability.waterSavedGallons, label: "Gallons Saved", sub: `≈ ${Math.round(sustainability.waterSavedGallons / 17.2)} showers` },
+              { metric: "kWh", value: sustainability.energySavedKwh, label: "Energy Saved", sub: `≈ ${Math.round(sustainability.energySavedKwh / 0.012)} phone charges` },
+              { metric: "CO₂", value: sustainability.co2AvoidedLbs, label: "Lbs Avoided", sub: "Making the planet greener" },
+            ].map(({ metric, value, label, sub }) => (
               <div
                 key={label}
-                className="group bg-white/5 backdrop-blur-sm border-2 border-washwell-green/30 rounded-2xl p-8 hover:border-washwell-green hover:bg-white/10 transition-all duration-300 hover:scale-105"
+                className="bg-white/5 border border-washwell-green/20 rounded-2xl p-8 hover:border-washwell-green/60 transition-all duration-300"
               >
-                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">
-                  {emoji}
-                </div>
-                <div className="font-mono text-5xl font-bold text-washwell-green mb-2">{value}</div>
-                <div className="text-sm text-washwell-gray uppercase tracking-wider font-semibold mb-3">
-                  {label}
-                </div>
-                <div className="text-xs text-washwell-gray-light">{sub}</div>
+                <div className="text-xs font-bold text-washwell-green uppercase tracking-widest mb-3">{metric}</div>
+                <div className="font-mono text-5xl font-bold text-white mb-1">{value}</div>
+                <div className="text-sm text-washwell-gray uppercase tracking-wider font-semibold mb-2">{label}</div>
+                <div className="text-xs text-washwell-gray/60">{sub}</div>
               </div>
             ))}
           </div>
 
           <div className="mt-12 text-center">
-            <p className="text-washwell-green text-lg font-display font-semibold italic">
-              It's not laundry, it's a lifestyle
+            <p className="text-washwell-green text-sm font-semibold uppercase tracking-widest">
+              It's not laundry — it's a lifestyle
             </p>
           </div>
         </div>
