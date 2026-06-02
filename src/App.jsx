@@ -5,6 +5,7 @@ import GuestPortal from "./pages/GuestPortal";
 import ConciergePortal from "./pages/ConciergePortal";
 import TechnicianPortal from "./pages/TechnicianPortal";
 import TrackingPage from "./pages/TrackingPage";
+import OnboardingPage from "./pages/OnboardingPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function RoleRedirect() {
@@ -21,6 +22,10 @@ function RoleRedirect() {
   if (!user) return <Navigate to="/login" replace />;
 
   const role = user.publicMetadata?.role;
+
+  // New user — send to onboarding
+  if (!role) return <Navigate to="/onboarding" replace />;
+
   if (role === "concierge")  return <Navigate to="/concierge"  replace />;
   if (role === "technician") return <Navigate to="/technician" replace />;
   return <Navigate to="/guest" replace />;
@@ -32,6 +37,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/track/:orderId" element={<TrackingPage />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
 
         <Route
           path="/guest"
