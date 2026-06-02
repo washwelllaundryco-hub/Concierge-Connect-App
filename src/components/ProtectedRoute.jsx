@@ -14,7 +14,7 @@ export default function ProtectedRoute({ children, role }) {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  const userRole = user.publicMetadata?.role;
+  const userRole = user.publicMetadata?.role || "guest";
   if (role && userRole !== role) return <Navigate to="/" replace />;
 
   return children;
