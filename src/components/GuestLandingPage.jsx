@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useClerk } from "@clerk/clerk-react";
 import { PRICING_TIERS } from "../constants";
 
 const STATUS_CONFIG = {
@@ -15,7 +14,6 @@ const STATUS_CONFIG = {
 const TOTAL_STEPS = 7;
 
 export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDelivery }) {
-  const { signOut } = useClerk();
   const [selectedTier, setSelectedTier] = useState("Standard Load");
   const [activeOrder, setActiveOrder] = useState(null);
   const [sustainability, setSustainability] = useState({
@@ -82,9 +80,6 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
       {/* Header */}
       <section className="px-6 py-12 md:py-16">
         <div className="max-w-4xl mx-auto text-center">
-          <div className="flex justify-end mb-4">
-            <button onClick={() => signOut({ redirectUrl: "/login" })} className="text-xs font-semibold text-washwell-gray hover:text-washwell-black uppercase tracking-widest transition-colors">Sign Out</button>
-          </div>
           <div className="flex justify-center mb-8">
             <img src="/logo.png" alt="Washwell Laundry Co." className="h-24 w-auto" />
           </div>
@@ -128,7 +123,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                       </div>
                       <p className="text-xs text-washwell-gray-dark truncate">{tier.tagline}</p>
                     </div>
-                    <span className={`font-display font-bold text-lg flex-shrink-0 ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
+                    <span className={`font-mono font-bold text-lg flex-shrink-0 ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
                       ${tier.price}
                     </span>
                     <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
@@ -148,7 +143,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
 
           <button
             onClick={handleRequestPickup}
-            className="w-full md:w-auto px-16 py-5 bg-washwell-black hover:opacity-90 text-white font-display font-bold text-lg rounded-2xl shadow-xl transition-all duration-300 tracking-widest uppercase"
+            className="w-full md:w-auto px-16 py-5 bg-washwell-green hover:bg-washwell-green-dark text-white font-display font-bold text-xl rounded-2xl shadow-xl transition-all duration-300 tracking-wide uppercase"
           >
             Request Pickup
           </button>
@@ -166,7 +161,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
             <div className="text-center mb-12">
               <div className="inline-flex items-center gap-3 mb-4 px-6 py-2 bg-washwell-green-pale border-2 border-washwell-green rounded-full">
                 <div className="w-2 h-2 bg-washwell-green rounded-full animate-pulse" />
-                <span className="font-display text-sm font-bold text-washwell-green uppercase tracking-wider">
+                <span className="font-mono text-sm font-bold text-washwell-green uppercase tracking-wider">
                   Active Order
                 </span>
               </div>
@@ -188,7 +183,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                 />
               </div>
               <div className="flex justify-between items-center mt-3">
-                <span className="text-sm font-display font-bold text-washwell-green">
+                <span className="text-sm font-mono font-bold text-washwell-green">
                   {Math.round(progressPct)}%
                 </span>
                 <span className="text-sm font-semibold text-washwell-gray-dark">
@@ -279,7 +274,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                 className="bg-white/5 border border-washwell-green/20 rounded-2xl p-8 hover:border-washwell-green/60 transition-all duration-300"
               >
                 <div className="text-xs font-bold text-washwell-green uppercase tracking-widest mb-3">{metric}</div>
-                <div className="font-display text-5xl font-bold text-white mb-1">{value}</div>
+                <div className="font-mono text-5xl font-bold text-white mb-1">{value}</div>
                 <div className="text-sm text-washwell-gray uppercase tracking-wider font-semibold mb-2">{label}</div>
                 <div className="text-xs text-washwell-gray/60">{sub}</div>
               </div>

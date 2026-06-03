@@ -1,3 +1,6 @@
+// POST /api/users/onboard
+// First-time setup: assigns role (concierge | technician) to a new user
+// via Clerk publicMetadata. Concierges also supply hotelName.
 import { createClerkClient } from "@clerk/backend";
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
@@ -5,33 +8,28 @@ const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  // Verify the request is from a signed-in user
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   try {
-    // Verify the session token and get userId
     const token = authHeader.replace("Bearer ", "");
     const { sub: userId } = JSON.parse(
       Buffer.from(token.split(".")[1], "base64").toString()
     );
 
     const { role, hotelName, hotelId } = req.body;
-
     if (!role) return res.status(400).json({ error: "role is required" });
 
     const metadata = { role };
     if (role === "concierge") {
       if (!hotelName) return res.status(400).json({ error: "hotelName is required for concierge" });
       metadata.hotelName = hotelName;
-      metadata.hotelId = hotelId || hotelName.toLowerCase().replace(/\s+/g, "-");
+      metadata.hotelId = hotelId || hotelName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
     }
 
-    await clerk.users.updateUserMetadata(userId, {
-      publicMetadata: metadata,
-    });
+    await clerk.users.updateUserMetadata(userId, { publicMetadata: metadata });
 
     return res.status(200).json({ success: true });
   } catch (err) {
