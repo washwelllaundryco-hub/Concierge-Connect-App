@@ -148,7 +148,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
 
           <button
             onClick={handleRequestPickup}
-            className="w-full md:w-auto px-16 py-5 bg-washwell-green hover:bg-washwell-green-dark text-white font-display font-bold text-xl rounded-2xl shadow-xl transition-all duration-300 tracking-wide uppercase"
+            className="w-full md:w-auto px-16 py-5 bg-washwell-black hover:opacity-90 text-white font-display font-bold text-lg rounded-2xl shadow-xl transition-all duration-300 tracking-widest uppercase"
           >
             Request Pickup
           </button>
