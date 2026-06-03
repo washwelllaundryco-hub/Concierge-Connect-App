@@ -1,6 +1,3 @@
-// POST /api/users/onboard
-// First-time setup: assigns role (concierge | technician) to a new user
-// via Clerk publicMetadata. Concierges also supply hotelName.
 import { createClerkClient } from "@clerk/backend";
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
@@ -19,14 +16,19 @@ export default async function handler(req, res) {
       Buffer.from(token.split(".")[1], "base64").toString()
     );
 
-    const { role, hotelName, hotelId } = req.body;
+    const { role, hotelName, hotelId, roomNumber } = req.body;
     if (!role) return res.status(400).json({ error: "role is required" });
 
     const metadata = { role };
+
     if (role === "concierge") {
       if (!hotelName) return res.status(400).json({ error: "hotelName is required for concierge" });
       metadata.hotelName = hotelName;
       metadata.hotelId = hotelId || hotelName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    }
+
+    if (role === "guest") {
+      if (roomNumber) metadata.roomNumber = roomNumber;
     }
 
     await clerk.users.updateUserMetadata(userId, { publicMetadata: metadata });

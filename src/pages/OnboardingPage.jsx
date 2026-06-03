@@ -7,14 +7,19 @@ export default function OnboardingPage() {
   const { getToken } = useAuth();
   const navigate = useNavigate();
 
-  const [role, setRole] = useState("concierge");
+  const [role, setRole] = useState("guest");
   const [hotelName, setHotelName] = useState("");
+  const [roomNumber, setRoomNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const handleSubmit = async () => {
     if (role === "concierge" && !hotelName.trim()) {
       setError("Please enter your hotel name.");
+      return;
+    }
+    if (role === "guest" && !roomNumber.trim()) {
+      setError("Please enter your room number.");
       return;
     }
     setSubmitting(true);
@@ -32,12 +37,12 @@ export default function OnboardingPage() {
           role,
           hotelName: hotelName.trim(),
           hotelId: hotelName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
+          roomNumber: roomNumber.trim(),
         }),
       });
 
       if (!res.ok) throw new Error("Failed to save. Please try again.");
 
-      // Reload user to pick up new metadata
       await user.reload();
 
       if (role === "concierge") navigate("/concierge");
@@ -71,7 +76,8 @@ export default function OnboardingPage() {
           </label>
           <div className="space-y-2">
             {[
-              { value: "concierge", label: "Hotel Concierge", desc: "I manage laundry requests for hotel guests" },
+              { value: "guest",      label: "Hotel Guest",       desc: "I'm a guest and want laundry service" },
+              { value: "concierge",  label: "Hotel Concierge",   desc: "I manage laundry requests for hotel guests" },
               { value: "technician", label: "Washwell Technician", desc: "I process and handle laundry orders" },
             ].map(({ value, label, desc }) => (
               <button
@@ -95,7 +101,7 @@ export default function OnboardingPage() {
           </div>
         </div>
 
-        {/* Hotel name — only for concierge */}
+        {/* Hotel name — concierge only */}
         {role === "concierge" && (
           <div className="mb-6">
             <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-2">
@@ -111,9 +117,23 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {error && (
-          <p className="text-red-500 text-sm mb-4">{error}</p>
+        {/* Room number — guest only */}
+        {role === "guest" && (
+          <div className="mb-6">
+            <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-2">
+              Room Number
+            </label>
+            <input
+              type="text"
+              value={roomNumber}
+              onChange={(e) => setRoomNumber(e.target.value)}
+              placeholder="e.g. 412"
+              className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all font-medium text-washwell-black"
+            />
+          </div>
         )}
+
+        {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
         <button
           onClick={handleSubmit}

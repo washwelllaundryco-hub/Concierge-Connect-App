@@ -1,26 +1,9 @@
 import { useState } from "react";
 
 const MOCK_ORDERS = [
-  {
-    id: "ord-20241",
-    orderNumber: "WW-20241",
-    guestName: "Marcus Webb",
-    roomNumber: "412",
-    status: "paid_pending_technician",
-    totalWeightLbs: null,
-    paymentVerified: true,
-    createdAt: "2026-05-12T09:30:00Z",
-  },
-  {
-    id: "ord-20242",
-    orderNumber: "WW-20242",
-    guestName: "Sarah Chen",
-    roomNumber: "315",
-    status: "in_wash",
-    totalWeightLbs: 12.5,
-    paymentVerified: true,
-    createdAt: "2026-05-12T10:15:00Z",
-  },
+  { id: "ord-20241", orderNumber: "WW-20241", guestName: "Marcus Webb",   roomNumber: "412", status: "paid_pending_technician", paymentVerified: true,  totalWeightLbs: null, washerNumber: null, dryerNumber: null },
+  { id: "ord-20242", orderNumber: "WW-20242", guestName: "Sarah Chen",    roomNumber: "315", status: "in_wash",                 paymentVerified: true,  totalWeightLbs: 22.4, washerNumber: null, dryerNumber: null },
+  { id: "ord-20243", orderNumber: "WW-20243", guestName: "James Rivera",  roomNumber: "201", status: "drying",                  paymentVerified: true,  totalWeightLbs: 18.1, washerNumber: 3,    dryerNumber: null },
 ];
 
 const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", "completed"];
@@ -30,6 +13,7 @@ export default function TechnicianDashboard() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [weightInput, setWeightInput] = useState("");
+  const [machineInputs, setMachineInputs] = useState({});
 
   const handleStatusUpdate = async (orderId, newStatus, weight = null) => {
     setOrders((prev) =>
@@ -54,6 +38,23 @@ export default function TechnicianDashboard() {
     }
   };
 
+  const handleMachineAssign = async (orderId, machineType, machineNumber) => {
+    const num = parseInt(machineNumber);
+    if (!num || num <= 0) return;
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId
+          ? { ...o, [machineType === "washer" ? "washerNumber" : "dryerNumber"]: num }
+          : o
+      )
+    );
+    await fetch(`/api/orders/machine`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, machineType, machineNumber: num }),
+    }).catch(() => {});
+  };
+
   const nextStatus = (current) => {
     const idx = STATUS_FLOW.indexOf(current);
     return STATUS_FLOW[idx + 1] ?? current;
@@ -61,9 +62,9 @@ export default function TechnicianDashboard() {
 
   const actionLabel = (order) => {
     if (order.status === "paid_pending_technician") return "Start Processing";
-    if (order.status === "in_wash") return "Move to Drying";
-    if (order.status === "drying") return "Move to Folding";
-    if (order.status === "folding") return "Mark as Completed";
+    if (order.status === "in_wash")  return "Move to Drying";
+    if (order.status === "drying")   return "Move to Folding";
+    if (order.status === "folding")  return "Mark as Completed";
     return null;
   };
 
@@ -98,6 +99,7 @@ export default function TechnicianDashboard() {
               key={order.id}
               className="bg-white rounded-3xl shadow-lg border-2 border-washwell-gray-light p-6 hover:shadow-xl transition-all"
             >
+              {/* Order header */}
               <div className="flex items-start justify-between mb-6">
                 <div>
                   <div className="inline-block px-4 py-1.5 bg-washwell-green-pale border-2 border-washwell-green rounded-full mb-3">
@@ -115,15 +117,14 @@ export default function TechnicianDashboard() {
                     <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
-                    <span className="text-white text-xs font-bold uppercase tracking-wider">
-                      Payment Verified
-                    </span>
+                    <span className="text-white text-xs font-bold uppercase tracking-wider">Paid</span>
                   </div>
                 )}
               </div>
 
+              {/* Status */}
               <div className="mb-4 p-4 bg-washwell-cream rounded-xl border-2 border-washwell-gray-light">
-                <div className="text-xs text-washwell-gray uppercase tracking-wider font-semibold mb-2">
+                <div className="text-xs text-washwell-gray uppercase tracking-wider font-semibold mb-1">
                   Current Status
                 </div>
                 <div className="text-lg font-display font-bold text-washwell-black capitalize">
@@ -131,6 +132,7 @@ export default function TechnicianDashboard() {
                 </div>
               </div>
 
+              {/* Weight */}
               {order.totalWeightLbs && (
                 <div className="mb-4 text-center">
                   <div className="text-3xl font-display font-bold text-washwell-green">
@@ -139,6 +141,72 @@ export default function TechnicianDashboard() {
                 </div>
               )}
 
+              {/* Machine number inputs */}
+              {(order.status === "in_wash" || order.status === "drying" || order.status === "folding") && (
+                <div className="mb-4 grid grid-cols-2 gap-3">
+                  {/* Washer */}
+                  <div>
+                    <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
+                      Washer #
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="—"
+                        defaultValue={order.washerNumber || ""}
+                        onChange={(e) =>
+                          setMachineInputs((p) => ({ ...p, [`${order.id}_washer`]: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-display font-bold text-washwell-black text-center"
+                      />
+                      <button
+                        onClick={() =>
+                          handleMachineAssign(order.id, "washer", machineInputs[`${order.id}_washer`] || order.washerNumber)
+                        }
+                        className="px-3 py-2 bg-washwell-green text-white rounded-xl font-bold text-sm hover:bg-washwell-green-dark transition-all"
+                      >
+                        Set
+                      </button>
+                    </div>
+                    {order.washerNumber && (
+                      <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{order.washerNumber}</p>
+                    )}
+                  </div>
+
+                  {/* Dryer */}
+                  <div>
+                    <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
+                      Dryer #
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="—"
+                        defaultValue={order.dryerNumber || ""}
+                        onChange={(e) =>
+                          setMachineInputs((p) => ({ ...p, [`${order.id}_dryer`]: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-display font-bold text-washwell-black text-center"
+                      />
+                      <button
+                        onClick={() =>
+                          handleMachineAssign(order.id, "dryer", machineInputs[`${order.id}_dryer`] || order.dryerNumber)
+                        }
+                        className="px-3 py-2 bg-washwell-green text-white rounded-xl font-bold text-sm hover:bg-washwell-green-dark transition-all"
+                      >
+                        Set
+                      </button>
+                    </div>
+                    {order.dryerNumber && (
+                      <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{order.dryerNumber}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Action button */}
               {actionLabel(order) && (
                 <button
                   onClick={() => {
