@@ -114,7 +114,7 @@ export default function CheckoutPage({ orderDetails, onPaymentComplete, onCancel
               </div>
               <div className="border-t-2 border-washwell-gray-light pt-3 mt-3 flex justify-between">
                 <span className="text-lg font-bold text-washwell-black">Total:</span>
-                <span className="text-2xl font-mono font-bold text-washwell-green">
+                <span className="text-2xl font-display font-bold text-washwell-green">
                   ${orderDetails.estimatedTotal}
                 </span>
               </div>

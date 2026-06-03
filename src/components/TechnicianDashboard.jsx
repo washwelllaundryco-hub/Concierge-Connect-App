@@ -101,7 +101,7 @@ export default function TechnicianDashboard() {
               <div className="flex items-start justify-between mb-6">
                 <div>
                   <div className="inline-block px-4 py-1.5 bg-washwell-green-pale border-2 border-washwell-green rounded-full mb-3">
-                    <span className="font-mono text-sm font-bold text-washwell-green">
+                    <span className="font-display text-sm font-bold text-washwell-green">
                       {order.orderNumber}
                     </span>
                   </div>
@@ -133,7 +133,7 @@ export default function TechnicianDashboard() {
 
               {order.totalWeightLbs && (
                 <div className="mb-4 text-center">
-                  <div className="text-3xl font-mono font-bold text-washwell-green">
+                  <div className="text-3xl font-display font-bold text-washwell-green">
                     {order.totalWeightLbs} lbs
                   </div>
                 </div>
@@ -172,7 +172,7 @@ export default function TechnicianDashboard() {
               value={weightInput}
               onChange={(e) => setWeightInput(e.target.value)}
               autoFocus
-              className="w-full px-5 py-4 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all text-2xl font-mono font-bold text-washwell-black mb-6"
+              className="w-full px-5 py-4 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all text-2xl font-display font-bold text-washwell-black mb-6"
             />
             <div className="flex gap-3">
               <button

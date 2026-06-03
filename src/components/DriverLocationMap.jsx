@@ -77,7 +77,7 @@ function DriverInfoCard({ driver, eta }) {
                 {driver.vehicle.color} {driver.vehicle.make} {driver.vehicle.model}
               </span>
             </div>
-            <div className="text-xs font-mono text-washwell-gray-dark">{driver.vehicle.license_plate}</div>
+            <div className="text-xs font-display text-washwell-gray-dark">{driver.vehicle.license_plate}</div>
           </div>
         )}
         {eta && (
@@ -85,7 +85,7 @@ function DriverInfoCard({ driver, eta }) {
             <span className="text-2xl">⏱</span>
             <div>
               <p className="text-xs text-white/80 font-semibold uppercase tracking-wider">Arriving in</p>
-              <p className="text-xl font-mono font-bold text-white">{eta}</p>
+              <p className="text-xl font-display font-bold text-white">{eta}</p>
             </div>
           </div>
         )}

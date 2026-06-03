@@ -118,7 +118,7 @@ export default function ConciergePortal() {
             { label: "Delivered Today",  value: deliveredToday.length },
           ].map(({ label, value }) => (
             <div key={label} className="bg-white rounded-2xl border-2 border-washwell-gray-light p-5 text-center">
-              <div className="text-4xl font-mono font-bold text-washwell-green mb-1">{value}</div>
+              <div className="text-4xl font-display font-bold text-washwell-green mb-1">{value}</div>
               <div className="text-xs text-washwell-gray uppercase tracking-wider font-semibold">{label}</div>
             </div>
           ))}
@@ -154,7 +154,7 @@ export default function ConciergePortal() {
               >
                 {/* Order number */}
                 <div className="hidden md:block">
-                  <span className="font-mono text-sm font-bold text-washwell-green bg-washwell-green-pale px-3 py-1 rounded-full border border-washwell-green">
+                  <span className="font-display text-sm font-bold text-washwell-green bg-washwell-green-pale px-3 py-1 rounded-full border border-washwell-green">
                     {order.orderNumber}
                   </span>
                 </div>
@@ -258,7 +258,7 @@ export default function ConciergePortal() {
                       >
                         <span>{tier.icon}</span>
                         <span className="flex-1 font-semibold text-sm text-washwell-black">{name}</span>
-                        <span className={`font-mono font-bold text-sm ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
+                        <span className={`font-display font-bold text-sm ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
                           ${tier.price}
                         </span>
                       </button>
