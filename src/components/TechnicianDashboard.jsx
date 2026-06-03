@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const MOCK_ORDERS = [
   { id: "ord-20241", orderNumber: "WW-20241", guestName: "Marcus Webb",   roomNumber: "412", status: "paid_pending_technician", paymentVerified: true,  totalWeightLbs: null, washerNumber: null, dryerNumber: null },
@@ -10,6 +10,23 @@ const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", 
 
 export default function TechnicianDashboard() {
   const [orders, setOrders] = useState(MOCK_ORDERS);
+
+  useEffect(() => {
+    async function fetchOrders() {
+      try {
+        const res = await fetch("/api/orders/active");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.orders?.length) setOrders(data.orders);
+        }
+      } catch {
+        // fall through to mock data
+      }
+    }
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 15000); // refresh every 15s
+    return () => clearInterval(interval);
+  }, []);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [weightInput, setWeightInput] = useState("");
