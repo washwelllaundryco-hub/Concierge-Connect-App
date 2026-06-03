@@ -13,11 +13,10 @@ const STATUS_BADGE = {
   completed:              { label: "Delivered",         color: "bg-washwell-green text-white" },
 };
 
-// Mock orders — replaced by real API once database is connected
 const MOCK_ORDERS = [
-  { id: "ord-20241", orderNumber: "WW-20241", guestFirstName: "Marcus", guestLastName: "Webb",   roomNumber: "412", status: "out_for_delivery", tier: "Standard Load", createdAt: "2026-05-15T09:30:00Z" },
-  { id: "ord-20242", orderNumber: "WW-20242", guestFirstName: "Sarah",  guestLastName: "Chen",   roomNumber: "315", status: "in_wash",          tier: "Premium Load",  createdAt: "2026-05-15T10:15:00Z" },
-  { id: "ord-20243", orderNumber: "WW-20243", guestFirstName: "James",  guestLastName: "Rivera", roomNumber: "201", status: "folding",          tier: "Essential Load",createdAt: "2026-05-15T11:00:00Z" },
+  { id: "ord-20241", orderNumber: "WW-20241", guestFirstName: "Marcus", guestLastName: "Webb",   roomNumber: "412", status: "out_for_delivery", tier: "Standard Load",  createdAt: "2026-05-15T09:30:00Z" },
+  { id: "ord-20242", orderNumber: "WW-20242", guestFirstName: "Sarah",  guestLastName: "Chen",   roomNumber: "315", status: "in_wash",          tier: "Premium Load",   createdAt: "2026-05-15T10:15:00Z" },
+  { id: "ord-20243", orderNumber: "WW-20243", guestFirstName: "James",  guestLastName: "Rivera", roomNumber: "201", status: "folding",          tier: "Essential Load", createdAt: "2026-05-15T11:00:00Z" },
 ];
 
 export default function ConciergePortal() {
@@ -59,26 +58,27 @@ export default function ConciergePortal() {
     if (!newOrder.firstName || !newOrder.roomNumber) return;
     setSubmitting(true);
 
+    // Open Stripe immediately — must happen synchronously inside the click handler
+    // or browsers will block it as a popup.
+    const tier = PRICING_TIERS[newOrder.tier];
+    window.open(tier.stripeUrl, "_blank");
+
+    // Log the order in the background (non-blocking)
     try {
       const token = await getToken();
-      const res = await fetch("/api/orders/request", {
+      await fetch("/api/orders/create", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ...newOrder, hotelId }),
+        body: JSON.stringify({ ...newOrder, hotelId, paymentMethod: "stripe" }),
       });
-      const data = await res.json();
-
-      // Open the Stripe link for the selected tier
-      const tier = PRICING_TIERS[newOrder.tier];
-      window.open(tier.stripeUrl, "_blank");
-
-      setShowNewOrder(false);
-      setNewOrder({ firstName: "", lastName: "", roomNumber: "", tier: "Standard Load" });
     } catch (err) {
       console.error("Create order error:", err);
     } finally {
       setSubmitting(false);
     }
+
+    setShowNewOrder(false);
+    setNewOrder({ firstName: "", lastName: "", roomNumber: "", tier: "Standard Load" });
   };
 
   return (
@@ -141,7 +141,6 @@ export default function ConciergePortal() {
         <div className="space-y-3">
           {activeOrders.length === 0 && (
             <div className="text-center py-16 text-washwell-gray">
-              <div className="text-5xl mb-3"></div>
               <p className="font-semibold">No active orders</p>
             </div>
           )}
@@ -152,14 +151,11 @@ export default function ConciergePortal() {
                 key={order.id}
                 className="bg-white rounded-2xl border-2 border-washwell-gray-light px-6 py-5 flex items-center gap-4 hover:shadow-md transition-all"
               >
-                {/* Order number */}
                 <div className="hidden md:block">
                   <span className="font-display text-sm font-bold text-washwell-green bg-washwell-green-pale px-3 py-1 rounded-full border border-washwell-green">
                     {order.orderNumber}
                   </span>
                 </div>
-
-                {/* Guest info */}
                 <div className="flex-1">
                   <p className="font-display font-bold text-washwell-black">
                     {order.guestFirstName} {order.guestLastName}
@@ -168,13 +164,9 @@ export default function ConciergePortal() {
                     Room {order.roomNumber} · {order.tier}
                   </p>
                 </div>
-
-                {/* Status badge */}
                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${badge.color}`}>
                   {badge.label}
                 </span>
-
-                {/* Actions */}
                 <div className="flex gap-2">
                   {order.status === "out_for_delivery" && (
                     <button
@@ -208,7 +200,7 @@ export default function ConciergePortal() {
                     type="text"
                     value={newOrder.firstName}
                     onChange={(e) => setNewOrder((p) => ({ ...p, firstName: e.target.value }))}
-                    placeholder="Marcus"
+                    placeholder="e.g. Marcus"
                     className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all font-medium text-washwell-black"
                   />
                 </div>
@@ -220,7 +212,7 @@ export default function ConciergePortal() {
                     type="text"
                     value={newOrder.lastName}
                     onChange={(e) => setNewOrder((p) => ({ ...p, lastName: e.target.value }))}
-                    placeholder="Webb"
+                    placeholder="e.g. Webb"
                     className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all font-medium text-washwell-black"
                   />
                 </div>
@@ -234,7 +226,7 @@ export default function ConciergePortal() {
                   type="text"
                   value={newOrder.roomNumber}
                   onChange={(e) => setNewOrder((p) => ({ ...p, roomNumber: e.target.value }))}
-                  placeholder="412"
+                  placeholder="e.g. 412"
                   className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all font-medium text-washwell-black"
                 />
               </div>
@@ -256,7 +248,6 @@ export default function ConciergePortal() {
                             : "bg-washwell-cream border-washwell-gray-light hover:border-washwell-green/50"
                         }`}
                       >
-                        <span>{tier.icon}</span>
                         <span className="flex-1 font-semibold text-sm text-washwell-black">{name}</span>
                         <span className={`font-display font-bold text-sm ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
                           ${tier.price}
