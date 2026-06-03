@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useClerk } from "@clerk/clerk-react";
 import { PRICING_TIERS } from "../constants";
 
 const STATUS_CONFIG = {
@@ -14,6 +15,7 @@ const STATUS_CONFIG = {
 const TOTAL_STEPS = 7;
 
 export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDelivery }) {
+  const { signOut } = useClerk();
   const [selectedTier, setSelectedTier] = useState("Standard Load");
   const [activeOrder, setActiveOrder] = useState(null);
   const [sustainability, setSustainability] = useState({
@@ -80,6 +82,9 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
       {/* Header */}
       <section className="px-6 py-12 md:py-16">
         <div className="max-w-4xl mx-auto text-center">
+          <div className="flex justify-end mb-4">
+            <button onClick={() => signOut({ redirectUrl: "/login" })} className="text-xs font-semibold text-washwell-gray hover:text-washwell-black uppercase tracking-widest transition-colors">Sign Out</button>
+          </div>
           <div className="flex justify-center mb-8">
             <img src="/logo.png" alt="Washwell Laundry Co." className="h-24 w-auto" />
           </div>
