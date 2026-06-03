@@ -123,7 +123,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                       </div>
                       <p className="text-xs text-washwell-gray-dark truncate">{tier.tagline}</p>
                     </div>
-                    <span className={`font-mono font-bold text-lg flex-shrink-0 ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
+                    <span className={`font-display font-bold text-lg flex-shrink-0 ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
                       ${tier.price}
                     </span>
                     <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
@@ -161,7 +161,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
             <div className="text-center mb-12">
               <div className="inline-flex items-center gap-3 mb-4 px-6 py-2 bg-washwell-green-pale border-2 border-washwell-green rounded-full">
                 <div className="w-2 h-2 bg-washwell-green rounded-full animate-pulse" />
-                <span className="font-mono text-sm font-bold text-washwell-green uppercase tracking-wider">
+                <span className="font-display text-sm font-bold text-washwell-green uppercase tracking-wider">
                   Active Order
                 </span>
               </div>
@@ -183,7 +183,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                 />
               </div>
               <div className="flex justify-between items-center mt-3">
-                <span className="text-sm font-mono font-bold text-washwell-green">
+                <span className="text-sm font-display font-bold text-washwell-green">
                   {Math.round(progressPct)}%
                 </span>
                 <span className="text-sm font-semibold text-washwell-gray-dark">
@@ -274,7 +274,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                 className="bg-white/5 border border-washwell-green/20 rounded-2xl p-8 hover:border-washwell-green/60 transition-all duration-300"
               >
                 <div className="text-xs font-bold text-washwell-green uppercase tracking-widest mb-3">{metric}</div>
-                <div className="font-mono text-5xl font-bold text-white mb-1">{value}</div>
+                <div className="font-display text-5xl font-bold text-white mb-1">{value}</div>
                 <div className="text-sm text-washwell-gray uppercase tracking-wider font-semibold mb-2">{label}</div>
                 <div className="text-xs text-washwell-gray/60">{sub}</div>
               </div>
