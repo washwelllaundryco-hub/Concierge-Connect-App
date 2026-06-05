@@ -1,64 +1,137 @@
 // POST /api/orders/create
 // Concierge places an order on behalf of a guest.
-// Routes to correct payment flow based on paymentMethod:
-//   stripe        → status: pending_payment, send guest a WhatsApp payment link
-//   room_charge   → status: paid_pending_technician, log room charge, notify tech
-//   hotel_account → status: paid_pending_technician, log hotel charge, notify tech
+// Accepts: { firstName, lastName, roomNumber, tier, paymentMethod, hotelId, specialInstructions }
+// paymentMethod: stripe | cash | room_charge | hotel_account
 import { sql } from "@vercel/postgres";
-import { notifyPaymentConfirmed, sendWhatsApp } from "../../src/lib/notifications.js";
+import { sendWhatsApp } from "../../src/lib/notifications.js";
+
+const TIER_PRICES = {
+  "Essential Load": "68.00",
+  "Standard Load":  "88.00",
+  "Premium Load":   "128.00",
+  "Executive Load": "188.00",
+  "Bulk Service":   "245.00",
+};
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
-  const { guestId, paymentMethod, specialInstructions, placedByUserId } = req.body;
+
+  const { firstName, lastName, roomNumber, tier, paymentMethod, hotelId, specialInstructions } = req.body;
+
+  if (!firstName || !roomNumber || !tier || !paymentMethod || !hotelId) {
+    return res.status(400).json({ error: "firstName, roomNumber, tier, paymentMethod, hotelId required" });
+  }
+
   try {
-    const guest = await sql`
-      SELECT hg.id, hg.room_number, hg.hotel_id,
-             u.first_name, u.last_name, u.email, u.phone,
-             h.name as hotel_name
-      FROM hotel_guests hg
-      INNER JOIN users u ON hg.user_id = u.id
-      INNER JOIN hotels h ON hg.hotel_id = h.id
-      WHERE hg.id = ${guestId}
+    // 1. Find hotel by slug
+    const hotelResult = await sql`
+      SELECT id, name FROM hotels WHERE slug = ${hotelId} LIMIT 1
     `;
-    if (!guest.rows.length) return res.status(404).json({ error: "Guest not found" });
-    const g = guest.rows[0];
-    const autoApproved = paymentMethod !== "stripe";
+    if (!hotelResult.rows.length) {
+      return res.status(404).json({ error: `Hotel not found: ${hotelId}` });
+    }
+    const hotel = hotelResult.rows[0];
+
+    // 2. Find or create a walk-in user record (no Clerk ID needed for concierge-placed orders)
+    let userId;
+    const existingUser = await sql`
+      SELECT u.id FROM users u
+      INNER JOIN hotel_guests hg ON hg.user_id = u.id
+      WHERE u.first_name = ${firstName}
+        AND LOWER(COALESCE(u.last_name, '')) = LOWER(${lastName || ""})
+        AND hg.hotel_id = ${hotel.id}
+        AND hg.room_number = ${roomNumber}
+      ORDER BY u.created_at DESC
+      LIMIT 1
+    `;
+    if (existingUser.rows.length) {
+      userId = existingUser.rows[0].id;
+    } else {
+      const newUser = await sql`
+        INSERT INTO users (first_name, last_name, role, created_at)
+        VALUES (${firstName}, ${lastName || null}, 'guest', NOW())
+        RETURNING id
+      `;
+      userId = newUser.rows[0].id;
+    }
+
+    // 3. Find or create hotel_guest record
+    let guestId;
+    const existingGuest = await sql`
+      SELECT id FROM hotel_guests WHERE user_id = ${userId} AND hotel_id = ${hotel.id} LIMIT 1
+    `;
+    if (existingGuest.rows.length) {
+      guestId = existingGuest.rows[0].id;
+      await sql`UPDATE hotel_guests SET room_number = ${roomNumber} WHERE id = ${guestId}`;
+    } else {
+      const newGuest = await sql`
+        INSERT INTO hotel_guests (user_id, hotel_id, room_number, created_at)
+        VALUES (${userId}, ${hotel.id}, ${roomNumber}, NOW())
+        RETURNING id
+      `;
+      guestId = newGuest.rows[0].id;
+    }
+
+    // 4. Determine status and price
+    const autoApproved  = paymentMethod !== "stripe";
     const initialStatus = autoApproved ? "paid_pending_technician" : "pending_payment";
+    const totalAmount   = TIER_PRICES[tier] || "88.00";
+
+    // 5. Generate order number
     const seqResult = await sql`SELECT nextval('order_number_seq') AS n`;
     const orderNumber = `WW-${String(seqResult.rows[0].n).padStart(5, "0")}`;
+
+    // 6. Insert order
     const orderResult = await sql`
       INSERT INTO laundry_orders
-        (order_number, guest_id, hotel_id, placed_by, placed_by_user_id,
-         payment_method, payment_verified, status, special_instructions, created_at)
+        (order_number, guest_id, hotel_id, placed_by, payment_method, payment_verified,
+         status, tier, total_amount, special_instructions, created_at)
       VALUES
-        (${orderNumber}, ${guestId}, ${g.hotel_id}, 'concierge', ${placedByUserId},
-         ${paymentMethod}, ${autoApproved}, ${initialStatus}, ${specialInstructions || null}, NOW())
+        (${orderNumber}, ${guestId}, ${hotel.id}, 'concierge', ${paymentMethod}, ${autoApproved},
+         ${initialStatus}, ${tier}, ${totalAmount}, ${specialInstructions || null}, NOW())
       RETURNING id, order_number
     `;
     const order = orderResult.rows[0];
-    if (paymentMethod === "stripe") {
-      // Send guest a WhatsApp payment link
-      await sendWhatsApp(
-        `whatsapp:${g.phone}`,
-        `Hi ${g.first_name}, your laundry pickup has been arranged by the concierge at ${g.hotel_name}.\n\nOrder ${orderNumber} — please complete your payment:\n${process.env.VITE_STRIPE_PAYMENT_LINK}?client_reference_id=${order.id}\n\n— Washwell Laundry Co.`
-      );
+    const guestName = `${firstName}${lastName ? " " + lastName : ""}`;
+
+    // 7. Notifications for non-Stripe payments (Stripe is confirmed via webhook)
+    if (paymentMethod === "cash") {
+      const msg = `New Cash Order — ${orderNumber}\nGuest: ${guestName}\nRoom: ${roomNumber} · ${hotel.name}\nTier: ${tier} ($${totalAmount})\nCash on delivery — collect $${totalAmount} at delivery.`;
+      if (process.env.WHATSAPP_TECHNICIAN) {
+        await sendWhatsApp(`whatsapp:${process.env.WHATSAPP_TECHNICIAN}`, msg);
+      }
+      if (process.env.WHATSAPP_MANAGER) {
+        await sendWhatsApp(
+          `whatsapp:${process.env.WHATSAPP_MANAGER}`,
+          `New order ${orderNumber} — Cash on delivery. ${guestName}, Room ${roomNumber}, ${hotel.name}. $${totalAmount}.`
+        );
+      }
     } else if (paymentMethod === "room_charge") {
       await sql`
-        INSERT INTO room_charges (order_id, hotel_id, guest_id, room_number, amount, description, charged_by, charged_at)
-        VALUES (${order.id}, ${g.hotel_id}, ${guestId}, ${g.room_number}, 45.00,
-                ${"Washwell Laundry — " + orderNumber}, ${placedByUserId}, NOW())
+        INSERT INTO room_charges (order_id, hotel_id, guest_id, room_number, amount, description, charged_at)
+        VALUES (${order.id}, ${hotel.id}, ${guestId}, ${roomNumber}, ${totalAmount},
+                ${"Washwell Laundry — " + orderNumber}, NOW())
       `;
-      await notifyPaymentConfirmed({ orderId: order.id, orderNumber, guestName: `${g.first_name} ${g.last_name}`, roomNumber: g.room_number, hotelName: g.hotel_name, totalAmount: "45.00", paymentNote: "Room charge" });
+      const msg = `New Order — ${orderNumber}\nGuest: ${guestName}\nRoom: ${roomNumber} · ${hotel.name}\nTier: ${tier} ($${totalAmount})\nRoom charge applied.`;
+      if (process.env.WHATSAPP_TECHNICIAN) {
+        await sendWhatsApp(`whatsapp:${process.env.WHATSAPP_TECHNICIAN}`, msg);
+      }
     } else if (paymentMethod === "hotel_account") {
       await sql`
-        INSERT INTO hotel_account_charges (order_id, hotel_id, guest_id, room_number, amount, description, created_by, created_at)
-        VALUES (${order.id}, ${g.hotel_id}, ${guestId}, ${g.room_number}, 45.00,
-                ${"Washwell Laundry — " + orderNumber}, ${placedByUserId}, NOW())
+        INSERT INTO hotel_account_charges (order_id, hotel_id, guest_id, room_number, amount, description, created_at)
+        VALUES (${order.id}, ${hotel.id}, ${guestId}, ${roomNumber}, ${totalAmount},
+                ${"Washwell Laundry — " + orderNumber}, NOW())
       `;
-      await notifyPaymentConfirmed({ orderId: order.id, orderNumber, guestName: `${g.first_name} ${g.last_name}`, roomNumber: g.room_number, hotelName: g.hotel_name, totalAmount: "45.00", paymentNote: `Hotel account — ${g.hotel_name}` });
+      const msg = `New Order — ${orderNumber}\nGuest: ${guestName}\nRoom: ${roomNumber} · ${hotel.name}\nTier: ${tier} ($${totalAmount})\nHotel account charge.`;
+      if (process.env.WHATSAPP_TECHNICIAN) {
+        await sendWhatsApp(`whatsapp:${process.env.WHATSAPP_TECHNICIAN}`, msg);
+      }
     }
+    // stripe: frontend opened Stripe link, webhook will auto-confirm on payment completion
+
     res.json({ success: true, orderId: order.id, orderNumber, status: initialStatus, paymentMethod });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to create order" });
+    console.error("Create order error:", err);
+    res.status(500).json({ error: "Failed to create order", detail: err.message });
   }
 }

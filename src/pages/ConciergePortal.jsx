@@ -4,19 +4,21 @@ import { useNavigate } from "react-router-dom";
 import { PRICING_TIERS } from "../constants";
 
 const STATUS_BADGE = {
-  pending:                { label: "Pending",          color: "bg-washwell-gray-light text-washwell-gray-dark" },
-  paid_pending_technician:{ label: "Paid — Awaiting",  color: "bg-yellow-100 text-yellow-800" },
-  in_wash:                { label: "In Wash",           color: "bg-blue-100 text-blue-800" },
-  drying:                 { label: "Drying",            color: "bg-purple-100 text-purple-800" },
-  folding:                { label: "Folding",           color: "bg-indigo-100 text-indigo-800" },
-  out_for_delivery:       { label: "Out for Delivery",  color: "bg-washwell-green-pale text-washwell-green-dark" },
-  completed:              { label: "Delivered",         color: "bg-washwell-green text-white" },
+  pending:                 { label: "Pending",           color: "bg-washwell-gray-light text-washwell-gray-dark" },
+  pending_payment:         { label: "Awaiting Payment",  color: "bg-orange-100 text-orange-800" },
+  paid_pending_technician: { label: "Paid — Awaiting",   color: "bg-yellow-100 text-yellow-800" },
+  in_wash:                 { label: "In Wash",            color: "bg-blue-100 text-blue-800" },
+  drying:                  { label: "Drying",             color: "bg-purple-100 text-purple-800" },
+  folding:                 { label: "Folding",            color: "bg-indigo-100 text-indigo-800" },
+  out_for_delivery:        { label: "Out for Delivery",   color: "bg-washwell-green-pale text-washwell-green-dark" },
+  completed:               { label: "Delivered",          color: "bg-washwell-green text-white" },
 };
 
-const MOCK_ORDERS = [
-  { id: "ord-20241", orderNumber: "WW-20241", guestFirstName: "Marcus", guestLastName: "Webb",   roomNumber: "412", status: "out_for_delivery", tier: "Standard Load",  createdAt: "2026-05-15T09:30:00Z" },
-  { id: "ord-20242", orderNumber: "WW-20242", guestFirstName: "Sarah",  guestLastName: "Chen",   roomNumber: "315", status: "in_wash",          tier: "Premium Load",   createdAt: "2026-05-15T10:15:00Z" },
-  { id: "ord-20243", orderNumber: "WW-20243", guestFirstName: "James",  guestLastName: "Rivera", roomNumber: "201", status: "folding",          tier: "Essential Load", createdAt: "2026-05-15T11:00:00Z" },
+const PAYMENT_METHODS = [
+  { value: "stripe",        label: "Credit Card",      desc: "Guest pays via Stripe" },
+  { value: "cash",          label: "Cash on Delivery", desc: "Collect cash at delivery" },
+  { value: "room_charge",   label: "Room Charge",      desc: "Charge to guest room" },
+  { value: "hotel_account", label: "Hotel Account",    desc: "Charge to hotel account" },
 ];
 
 export default function ConciergePortal() {
@@ -28,10 +30,14 @@ export default function ConciergePortal() {
   const hotelId   = user.publicMetadata?.hotelId   || "hotel-demo";
   const hotelName = user.publicMetadata?.hotelName  || "Your Hotel";
 
-  const [orders, setOrders] = useState(MOCK_ORDERS);
+  const [orders, setOrders] = useState([]);
   const [showNewOrder, setShowNewOrder] = useState(false);
-  const [newOrder, setNewOrder] = useState({ firstName: "", lastName: "", roomNumber: "", tier: "Standard Load" });
+  const [newOrder, setNewOrder] = useState({
+    firstName: "", lastName: "", roomNumber: "",
+    tier: "Standard Load", paymentMethod: "stripe",
+  });
   const [submitting, setSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
 
   useEffect(() => {
     async function fetchOrders() {
@@ -42,13 +48,15 @@ export default function ConciergePortal() {
         });
         if (res.ok) {
           const data = await res.json();
-          setOrders(data.orders);
+          setOrders(data.orders || []);
         }
       } catch {
-        // fall through to mock data
+        // leave as empty — no mock fallback
       }
     }
     fetchOrders();
+    const interval = setInterval(fetchOrders, 30000);
+    return () => clearInterval(interval);
   }, [hotelId]);
 
   const activeOrders   = orders.filter((o) => o.status !== "completed");
@@ -58,19 +66,35 @@ export default function ConciergePortal() {
     if (!newOrder.firstName || !newOrder.roomNumber) return;
     setSubmitting(true);
 
-    // Open Stripe immediately — must happen synchronously inside the click handler
-    // or browsers will block it as a popup.
     const tier = PRICING_TIERS[newOrder.tier];
-    window.open(tier.stripeUrl, "_blank");
+    const isStripe = newOrder.paymentMethod === "stripe";
 
-    // Log the order in the background (non-blocking)
+    // For Stripe: open popup synchronously BEFORE any async call
+    // (browsers block window.open from async context)
+    if (isStripe) {
+      window.open(tier.stripeUrl, "_blank");
+    }
+
     try {
       const token = await getToken();
-      await fetch("/api/orders/create", {
+      const res = await fetch("/api/orders/create", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ...newOrder, hotelId, paymentMethod: "stripe" }),
+        body: JSON.stringify({
+          firstName:      newOrder.firstName,
+          lastName:       newOrder.lastName,
+          roomNumber:     newOrder.roomNumber,
+          tier:           newOrder.tier,
+          paymentMethod:  newOrder.paymentMethod,
+          hotelId,
+        }),
       });
+
+      if (!isStripe && res.ok) {
+        const label = PAYMENT_METHODS.find((m) => m.value === newOrder.paymentMethod)?.label;
+        setSuccessMsg(`Order placed — ${label}. Technician has been notified.`);
+        setTimeout(() => setSuccessMsg(""), 6000);
+      }
     } catch (err) {
       console.error("Create order error:", err);
     } finally {
@@ -78,7 +102,7 @@ export default function ConciergePortal() {
     }
 
     setShowNewOrder(false);
-    setNewOrder({ firstName: "", lastName: "", roomNumber: "", tier: "Standard Load" });
+    setNewOrder({ firstName: "", lastName: "", roomNumber: "", tier: "Standard Load", paymentMethod: "stripe" });
   };
 
   return (
@@ -110,6 +134,13 @@ export default function ConciergePortal() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-10">
+        {/* Success banner */}
+        {successMsg && (
+          <div className="mb-6 px-5 py-4 bg-washwell-green text-white font-bold rounded-xl shadow-md">
+            ✓ {successMsg}
+          </div>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-10">
           {[
@@ -142,6 +173,7 @@ export default function ConciergePortal() {
           {activeOrders.length === 0 && (
             <div className="text-center py-16 text-washwell-gray">
               <p className="font-semibold">No active orders</p>
+              <p className="text-sm mt-1">Orders placed from this portal will appear here.</p>
             </div>
           )}
           {activeOrders.map((order) => {
@@ -167,16 +199,14 @@ export default function ConciergePortal() {
                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${badge.color}`}>
                   {badge.label}
                 </span>
-                <div className="flex gap-2">
-                  {order.status === "out_for_delivery" && (
-                    <button
-                      onClick={() => navigate(`/track/${order.id}`)}
-                      className="px-4 py-2 bg-washwell-black hover:opacity-90 text-white text-sm font-bold rounded-xl transition-all"
-                    >
-                      Track
-                    </button>
-                  )}
-                </div>
+                {order.status === "out_for_delivery" && (
+                  <button
+                    onClick={() => navigate(`/track/${order.id}`)}
+                    className="px-4 py-2 bg-washwell-black hover:opacity-90 text-white text-sm font-bold rounded-xl transition-all"
+                  >
+                    Track
+                  </button>
+                )}
               </div>
             );
           })}
@@ -186,11 +216,12 @@ export default function ConciergePortal() {
       {/* New Pickup Request Modal */}
       {showNewOrder && (
         <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-washwell-green">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-washwell-green overflow-y-auto max-h-[90vh]">
             <h3 className="text-2xl font-display font-bold text-washwell-black mb-1">New Pickup Request</h3>
             <p className="text-sm text-washwell-gray-dark mb-6">{hotelName}</p>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
+              {/* Guest name */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
@@ -218,6 +249,7 @@ export default function ConciergePortal() {
                 </div>
               </div>
 
+              {/* Room */}
               <div>
                 <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
                   Room Number
@@ -231,6 +263,7 @@ export default function ConciergePortal() {
                 />
               </div>
 
+              {/* Service Tier */}
               <div>
                 <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-3">
                   Service Tier
@@ -257,6 +290,34 @@ export default function ConciergePortal() {
                   })}
                 </div>
               </div>
+
+              {/* Payment Method */}
+              <div>
+                <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-3">
+                  Payment Method
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {PAYMENT_METHODS.map((pm) => {
+                    const isSelected = newOrder.paymentMethod === pm.value;
+                    return (
+                      <button
+                        key={pm.value}
+                        onClick={() => setNewOrder((p) => ({ ...p, paymentMethod: pm.value }))}
+                        className={`flex flex-col items-start px-4 py-3 rounded-xl border-2 transition-all text-left ${
+                          isSelected
+                            ? "bg-washwell-green-pale border-washwell-green"
+                            : "bg-washwell-cream border-washwell-gray-light hover:border-washwell-green/50"
+                        }`}
+                      >
+                        <span className={`font-bold text-sm ${isSelected ? "text-washwell-green" : "text-washwell-black"}`}>
+                          {pm.label}
+                        </span>
+                        <span className="text-xs text-washwell-gray-dark mt-0.5">{pm.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-3 mt-6">
@@ -271,7 +332,12 @@ export default function ConciergePortal() {
                 disabled={submitting || !newOrder.firstName || !newOrder.roomNumber}
                 className="flex-1 py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {submitting ? "Opening Stripe..." : "Proceed to Payment →"}
+                {submitting
+                  ? "Placing Order..."
+                  : newOrder.paymentMethod === "stripe"
+                    ? "Open Payment Link →"
+                    : "Place Order →"
+                }
               </button>
             </div>
           </div>
