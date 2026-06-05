@@ -18,7 +18,7 @@ export default async function handler(req, res) {
         lo.payment_verified   AS "paymentVerified",
         lo.special_instructions AS "specialInstructions",
         lo.created_at         AS "createdAt",
-        u.first_name || ' ' || u.last_name AS "guestName",
+        u.first_name || COALESCE(' ' || u.last_name, '') AS "guestName",
         hg.room_number        AS "roomNumber",
         h.name                AS "hotelName"
       FROM laundry_orders lo

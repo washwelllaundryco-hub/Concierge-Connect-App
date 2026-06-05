@@ -9,7 +9,7 @@ const MOCK_ORDERS = [
 const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", "completed"];
 
 export default function TechnicianDashboard() {
-  const [orders, setOrders] = useState(MOCK_ORDERS);
+  const [orders, setOrders] = useState([]);
 
   useEffect(() => {
     async function fetchOrders() {
@@ -17,10 +17,10 @@ export default function TechnicianDashboard() {
         const res = await fetch("/api/orders/active");
         if (res.ok) {
           const data = await res.json();
-          if (data.orders?.length) setOrders(data.orders);
+          setOrders(data.orders ?? []);
         }
       } catch {
-        // fall through to mock data
+        // network error — keep current state
       }
     }
     fetchOrders();
