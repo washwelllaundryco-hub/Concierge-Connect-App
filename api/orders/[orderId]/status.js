@@ -21,13 +21,19 @@ export default async function handler(req, res) {
 
     const fromStatus = prev.rows[0].status;
 
-    await sql`
-      UPDATE laundry_orders
-      SET status = ${status},
-          ${weight ? sql`total_weight_lbs = ${weight},` : sql``}
-          updated_at = NOW()
-      WHERE id = ${orderId}
-    `;
+    if (weight) {
+      await sql`
+        UPDATE laundry_orders
+        SET status = ${status}, total_weight_lbs = ${weight}, updated_at = NOW()
+        WHERE id = ${orderId}
+      `;
+    } else {
+      await sql`
+        UPDATE laundry_orders
+        SET status = ${status}, updated_at = NOW()
+        WHERE id = ${orderId}
+      `;
+    }
 
     await sql`
       INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, changed_at)
