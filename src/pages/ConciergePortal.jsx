@@ -69,10 +69,11 @@ export default function ConciergePortal() {
     const tier = PRICING_TIERS[newOrder.tier];
     const isStripe = newOrder.paymentMethod === "stripe";
 
-    // For Stripe: open popup synchronously BEFORE any async call
-    // (browsers block window.open from async context)
+    // For Stripe: pre-open a blank tab synchronously to avoid popup blocking.
+    // We'll redirect it to Stripe with the order ID once the API call completes.
+    let stripeTab = null;
     if (isStripe) {
-      window.open(tier.stripeUrl, "_blank");
+      stripeTab = window.open("about:blank", "_blank");
     }
 
     try {
@@ -90,12 +91,23 @@ export default function ConciergePortal() {
         }),
       });
 
-      if (!isStripe && res.ok) {
-        const label = PAYMENT_METHODS.find((m) => m.value === newOrder.paymentMethod)?.label;
-        setSuccessMsg(`Order placed — ${label}. Technician has been notified.`);
-        setTimeout(() => setSuccessMsg(""), 6000);
+      if (res.ok) {
+        const data = await res.json();
+        if (isStripe && stripeTab) {
+          // Redirect the pre-opened tab to Stripe with the order ID so the
+          // webhook can match the payment back to this order.
+          stripeTab.location.href = `${tier.stripeUrl}?client_reference_id=${data.orderId}`;
+        } else if (!isStripe) {
+          const label = PAYMENT_METHODS.find((m) => m.value === newOrder.paymentMethod)?.label;
+          setSuccessMsg(`Order placed — ${label}. Technician has been notified.`);
+          setTimeout(() => setSuccessMsg(""), 6000);
+        }
+      } else {
+        if (stripeTab) stripeTab.close();
+        console.error("Create order failed:", await res.text());
       }
     } catch (err) {
+      if (stripeTab) stripeTab.close();
       console.error("Create order error:", err);
     } finally {
       setSubmitting(false);
