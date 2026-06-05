@@ -38,6 +38,7 @@ export default function ConciergePortal() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
+  const [stripeLink, setStripeLink] = useState(null); // { url, orderNumber }
 
   useEffect(() => {
     async function fetchOrders() {
@@ -69,13 +70,6 @@ export default function ConciergePortal() {
     const tier = PRICING_TIERS[newOrder.tier];
     const isStripe = newOrder.paymentMethod === "stripe";
 
-    // For Stripe: pre-open a blank tab synchronously to avoid popup blocking.
-    // We'll redirect it to Stripe with the order ID once the API call completes.
-    let stripeTab = null;
-    if (isStripe) {
-      stripeTab = window.open("about:blank", "_blank");
-    }
-
     try {
       const token = await getToken();
       const res = await fetch("/api/orders/create", {
@@ -93,21 +87,22 @@ export default function ConciergePortal() {
 
       if (res.ok) {
         const data = await res.json();
-        if (isStripe && stripeTab) {
-          // Redirect the pre-opened tab to Stripe with the order ID so the
-          // webhook can match the payment back to this order.
-          stripeTab.location.href = `${tier.stripeUrl}?client_reference_id=${data.orderId}`;
-        } else if (!isStripe) {
+        if (isStripe) {
+          // Show payment link modal — concierge can copy/share with guest.
+          // The link includes client_reference_id so the webhook can match it.
+          setStripeLink({
+            url: `${tier.stripeUrl}?client_reference_id=${data.orderId}`,
+            orderNumber: data.orderNumber,
+          });
+        } else {
           const label = PAYMENT_METHODS.find((m) => m.value === newOrder.paymentMethod)?.label;
           setSuccessMsg(`Order placed — ${label}. Technician has been notified.`);
           setTimeout(() => setSuccessMsg(""), 6000);
         }
       } else {
-        if (stripeTab) stripeTab.close();
         console.error("Create order failed:", await res.text());
       }
     } catch (err) {
-      if (stripeTab) stripeTab.close();
       console.error("Create order error:", err);
     } finally {
       setSubmitting(false);
@@ -224,6 +219,45 @@ export default function ConciergePortal() {
           })}
         </div>
       </main>
+
+      {/* Stripe Payment Link Modal */}
+      {stripeLink && (
+        <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-washwell-green">
+            <h3 className="text-2xl font-display font-bold text-washwell-black mb-1">Order Created</h3>
+            <p className="text-sm text-washwell-gray-dark mb-6">
+              Share this payment link with the guest for order <strong>{stripeLink.orderNumber}</strong>.
+              The order will confirm automatically once payment is complete.
+            </p>
+            <div className="bg-washwell-cream rounded-xl px-4 py-3 mb-4 break-all text-sm font-medium text-washwell-black border-2 border-washwell-gray-light">
+              {stripeLink.url}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { navigator.clipboard.writeText(stripeLink.url); }}
+                className="flex-1 py-3 border-2 border-washwell-green text-washwell-green font-bold rounded-xl hover:bg-washwell-green-pale transition-colors"
+              >
+                Copy Link
+              </button>
+              <a
+                href={stripeLink.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setStripeLink(null)}
+                className="flex-1 py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl shadow-lg transition-all text-center"
+              >
+                Open →
+              </a>
+            </div>
+            <button
+              onClick={() => setStripeLink(null)}
+              className="w-full mt-3 py-2 text-sm text-washwell-gray hover:text-washwell-black transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* New Pickup Request Modal */}
       {showNewOrder && (
