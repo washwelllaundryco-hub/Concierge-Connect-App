@@ -6,7 +6,7 @@ const MOCK_ORDERS = [
   { id: "ord-20243", orderNumber: "WW-20243", guestName: "James Rivera",  roomNumber: "201", status: "drying",                  paymentVerified: true,  totalWeightLbs: 18.1, washerNumber: 3,    dryerNumber: null },
 ];
 
-const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", "completed"];
+const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", "out_for_delivery", "completed"];
 
 export default function TechnicianDashboard() {
   const [orders, setOrders] = useState([]);
@@ -79,9 +79,10 @@ export default function TechnicianDashboard() {
 
   const actionLabel = (order) => {
     if (order.status === "paid_pending_technician") return "Start Processing";
-    if (order.status === "in_wash")  return "Move to Drying";
-    if (order.status === "drying")   return "Move to Folding";
-    if (order.status === "folding")  return "Mark as Completed";
+    if (order.status === "in_wash")          return "Move to Drying";
+    if (order.status === "drying")           return "Move to Folding";
+    if (order.status === "folding")          return "Out for Delivery";
+    if (order.status === "out_for_delivery") return "Mark as Delivered";
     return null;
   };
 

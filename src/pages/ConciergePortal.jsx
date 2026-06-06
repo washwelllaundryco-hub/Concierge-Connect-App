@@ -324,6 +324,40 @@ export default function ConciergePortal() {
             );
           })}
         </div>
+
+        {/* Delivered Today */}
+        {deliveredToday.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-2xl font-display font-bold text-washwell-black mb-6">
+              Delivered Today ({deliveredToday.length})
+            </h2>
+            <div className="space-y-3">
+              {deliveredToday.map((order) => (
+                <div
+                  key={order.id}
+                  className="bg-white rounded-2xl border-2 border-washwell-gray-light px-6 py-5 flex items-center gap-4 opacity-75"
+                >
+                  <div className="hidden md:block">
+                    <span className="font-display text-sm font-bold text-washwell-green bg-washwell-green-pale px-3 py-1 rounded-full border border-washwell-green">
+                      {order.orderNumber}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-display font-bold text-washwell-black">
+                      {order.guestFirstName} {order.guestLastName}
+                    </p>
+                    <p className="text-sm text-washwell-gray-dark">
+                      Room {order.roomNumber} · {order.tier}
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-washwell-green text-white">
+                    Delivered ✓
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Environmental Impact */}
