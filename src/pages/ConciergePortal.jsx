@@ -14,12 +14,29 @@ const STATUS_BADGE = {
   completed:               { label: "Delivered",          color: "bg-washwell-green text-white" },
 };
 
+const STATUS_STEPS = [
+  { key: "paid_pending_technician", label: "Received",    matches: ["pending", "pending_payment", "paid_pending_technician"] },
+  { key: "picked_up",               label: "Picked Up",   matches: ["picked_up"] },
+  { key: "in_wash",                 label: "In Wash",     matches: ["in_wash"] },
+  { key: "drying",                  label: "Drying",      matches: ["drying"] },
+  { key: "folding",                 label: "Folding",      matches: ["folding"] },
+  { key: "out_for_delivery",        label: "Delivering",  matches: ["out_for_delivery"] },
+  { key: "completed",               label: "Delivered",   matches: ["completed", "delivered"] },
+];
+
 const PAYMENT_METHODS = [
   { value: "stripe",        label: "Credit Card",      desc: "Guest pays via Stripe" },
   { value: "cash",          label: "Cash on Delivery", desc: "Collect cash at delivery" },
   { value: "room_charge",   label: "Room Charge",      desc: "Charge to guest room" },
   { value: "hotel_account", label: "Hotel Account",    desc: "Charge to hotel account" },
 ];
+
+function getStepIndex(status) {
+  for (let i = 0; i < STATUS_STEPS.length; i++) {
+    if (STATUS_STEPS[i].matches.includes(status)) return i;
+  }
+  return 0;
+}
 
 export default function ConciergePortal() {
   const { user } = useUser();
@@ -36,9 +53,12 @@ export default function ConciergePortal() {
     firstName: "", lastName: "", roomNumber: "",
     tier: "Standard Load", paymentMethod: "stripe",
   });
-  const [submitting, setSubmitting] = useState(false);
-  const [successMsg, setSuccessMsg] = useState("");
-  const [stripeLink, setStripeLink] = useState(null); // { url, orderNumber }
+  const [submitting, setSubmitting]   = useState(false);
+  const [successMsg, setSuccessMsg]   = useState("");
+  const [stripeLink, setStripeLink]   = useState(null);
+  const [sustainability, setSustainability] = useState({
+    totalOrders: 0, waterSavedGallons: 0, energySavedKwh: 0, co2AvoidedLbs: 0,
+  });
 
   useEffect(() => {
     async function fetchOrders() {
@@ -52,7 +72,7 @@ export default function ConciergePortal() {
           setOrders(data.orders || []);
         }
       } catch {
-        // leave as empty — no mock fallback
+        // leave as empty
       }
     }
     fetchOrders();
@@ -60,36 +80,45 @@ export default function ConciergePortal() {
     return () => clearInterval(interval);
   }, [hotelId]);
 
+  useEffect(() => {
+    async function fetchSustainability() {
+      try {
+        const res = await fetch("/api/sustainability/sync", { method: "GET" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.totals) setSustainability(data.totals);
+      } catch {
+        // keep defaults
+      }
+    }
+    fetchSustainability();
+  }, []);
+
   const activeOrders   = orders.filter((o) => o.status !== "completed");
   const deliveredToday = orders.filter((o) => o.status === "completed");
 
   const handleNewOrderSubmit = async () => {
     if (!newOrder.firstName || !newOrder.roomNumber) return;
     setSubmitting(true);
-
-    const tier = PRICING_TIERS[newOrder.tier];
+    const tier    = PRICING_TIERS[newOrder.tier];
     const isStripe = newOrder.paymentMethod === "stripe";
-
     try {
       const token = await getToken();
       const res = await fetch("/api/orders/create", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          firstName:      newOrder.firstName,
-          lastName:       newOrder.lastName,
-          roomNumber:     newOrder.roomNumber,
-          tier:           newOrder.tier,
-          paymentMethod:  newOrder.paymentMethod,
+          firstName:     newOrder.firstName,
+          lastName:      newOrder.lastName,
+          roomNumber:    newOrder.roomNumber,
+          tier:          newOrder.tier,
+          paymentMethod: newOrder.paymentMethod,
           hotelId,
         }),
       });
-
       if (res.ok) {
         const data = await res.json();
         if (isStripe) {
-          // Show payment link modal — concierge can copy/share with guest.
-          // The link includes client_reference_id so the webhook can match it.
           setStripeLink({
             url: `${tier.stripeUrl}?client_reference_id=${data.orderId}`,
             orderNumber: data.orderNumber,
@@ -107,13 +136,13 @@ export default function ConciergePortal() {
     } finally {
       setSubmitting(false);
     }
-
     setShowNewOrder(false);
     setNewOrder({ firstName: "", lastName: "", roomNumber: "", tier: "Standard Load", paymentMethod: "stripe" });
   };
 
   return (
     <div className="min-h-screen bg-washwell-cream font-body">
+
       {/* Header */}
       <header className="bg-washwell-black border-b-4 border-washwell-green px-6 py-5">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -141,6 +170,7 @@ export default function ConciergePortal() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-10">
+
         {/* Success banner */}
         {successMsg && (
           <div className="mb-6 px-5 py-4 bg-washwell-green text-white font-bold rounded-xl shadow-md">
@@ -161,6 +191,82 @@ export default function ConciergePortal() {
             </div>
           ))}
         </div>
+
+        {/* Order Tracker */}
+        {activeOrders.length > 0 && (
+          <div className="mb-10">
+            <h2 className="text-2xl font-display font-bold text-washwell-black mb-6">
+              Live Order Tracker
+            </h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              {activeOrders.map((order) => {
+                const currentStep = getStepIndex(order.status);
+                const pct = Math.round((currentStep / (STATUS_STEPS.length - 1)) * 100);
+                const badge = STATUS_BADGE[order.status] || STATUS_BADGE.pending;
+                return (
+                  <div key={order.id} className="bg-white rounded-2xl border-2 border-washwell-gray-light p-5">
+                    {/* Order header */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <span className="font-display text-sm font-bold text-washwell-green bg-washwell-green-pale px-3 py-1 rounded-full border border-washwell-green">
+                          {order.orderNumber}
+                        </span>
+                        <p className="font-display font-bold text-washwell-black mt-2">
+                          {order.guestFirstName} {order.guestLastName}
+                        </p>
+                        <p className="text-sm text-washwell-gray-dark">Room {order.roomNumber} · {order.tier}</p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${badge.color}`}>
+                        {badge.label}
+                      </span>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="mb-3">
+                      <div className="relative h-1.5 bg-washwell-gray-light rounded-full overflow-hidden">
+                        <div
+                          className="absolute h-full bg-washwell-green transition-all duration-700 rounded-full"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Step dots */}
+                    <div className="flex items-center justify-between">
+                      {STATUS_STEPS.map((step, i) => {
+                        const isActive    = i === currentStep;
+                        const isCompleted = i < currentStep;
+                        return (
+                          <div key={step.key} className="flex flex-col items-center gap-1">
+                            <div className={`w-3 h-3 rounded-full border-2 transition-all ${
+                              isCompleted ? "bg-washwell-green border-washwell-green" :
+                              isActive    ? "bg-washwell-green border-washwell-green ring-2 ring-washwell-green/30" :
+                              "bg-white border-washwell-gray-light"
+                            }`} />
+                            <span className={`text-[9px] font-semibold text-center leading-tight ${
+                              isActive ? "text-washwell-black" : "text-washwell-gray"
+                            }`}>
+                              {step.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {order.status === "out_for_delivery" && (
+                      <button
+                        onClick={() => navigate(`/track/${order.id}`)}
+                        className="w-full mt-4 py-2 bg-washwell-black hover:opacity-90 text-white text-sm font-bold rounded-xl transition-all"
+                      >
+                        Track Delivery →
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="flex items-center justify-between mb-6">
@@ -220,6 +326,39 @@ export default function ConciergePortal() {
         </div>
       </main>
 
+      {/* Environmental Impact */}
+      <section className="bg-washwell-black px-6 py-16 mt-10">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-display font-bold text-white mb-2">
+              {hotelName} Environmental Impact
+            </h2>
+            <p className="text-washwell-gray">
+              {sustainability.totalOrders} orders completed
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              { metric: "H₂O", value: sustainability.waterSavedGallons, label: "Gallons Saved",   sub: `≈ ${Math.round((sustainability.waterSavedGallons || 0) / 17.2)} showers` },
+              { metric: "kWh", value: sustainability.energySavedKwh,    label: "Energy Saved",    sub: `≈ ${Math.round((sustainability.energySavedKwh    || 0) / 0.012)} phone charges` },
+              { metric: "CO₂", value: sustainability.co2AvoidedLbs,     label: "Lbs CO₂ Avoided", sub: "Making the planet greener" },
+            ].map(({ metric, value, label, sub }) => (
+              <div key={label} className="bg-white/5 border border-washwell-green/20 rounded-2xl p-8 hover:border-washwell-green/60 transition-all">
+                <div className="text-xs font-bold text-washwell-green uppercase tracking-widest mb-3">{metric}</div>
+                <div className="font-display text-5xl font-bold text-white mb-1">{value ?? 0}</div>
+                <div className="text-sm text-washwell-gray uppercase tracking-wider font-semibold mb-2">{label}</div>
+                <div className="text-xs text-washwell-gray/60">{sub}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-12 text-center">
+            <p className="text-washwell-green text-sm font-semibold uppercase tracking-widest">
+              It's not laundry — it's a lifestyle
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Stripe Payment Link Modal */}
       {stripeLink && (
         <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -265,99 +404,63 @@ export default function ConciergePortal() {
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-washwell-green overflow-y-auto max-h-[90vh]">
             <h3 className="text-2xl font-display font-bold text-washwell-black mb-1">New Pickup Request</h3>
             <p className="text-sm text-washwell-gray-dark mb-6">{hotelName}</p>
-
             <div className="space-y-5">
-              {/* Guest name */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
-                    First Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newOrder.firstName}
+                  <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">First Name</label>
+                  <input type="text" value={newOrder.firstName}
                     onChange={(e) => setNewOrder((p) => ({ ...p, firstName: e.target.value }))}
                     placeholder="e.g. Marcus"
                     className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all font-medium text-washwell-black"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newOrder.lastName}
+                  <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">Last Name</label>
+                  <input type="text" value={newOrder.lastName}
                     onChange={(e) => setNewOrder((p) => ({ ...p, lastName: e.target.value }))}
                     placeholder="e.g. Webb"
                     className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all font-medium text-washwell-black"
                   />
                 </div>
               </div>
-
-              {/* Room */}
               <div>
-                <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
-                  Room Number
-                </label>
-                <input
-                  type="text"
-                  value={newOrder.roomNumber}
+                <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">Room Number</label>
+                <input type="text" value={newOrder.roomNumber}
                   onChange={(e) => setNewOrder((p) => ({ ...p, roomNumber: e.target.value }))}
                   placeholder="e.g. 412"
                   className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all font-medium text-washwell-black"
                 />
               </div>
-
-              {/* Service Tier */}
               <div>
-                <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-3">
-                  Service Tier
-                </label>
+                <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-3">Service Tier</label>
                 <div className="space-y-2">
                   {Object.entries(PRICING_TIERS).map(([name, tier]) => {
                     const isSelected = newOrder.tier === name;
                     return (
-                      <button
-                        key={name}
-                        onClick={() => setNewOrder((p) => ({ ...p, tier: name }))}
+                      <button key={name} onClick={() => setNewOrder((p) => ({ ...p, tier: name }))}
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left ${
-                          isSelected
-                            ? "bg-washwell-green-pale border-washwell-green"
-                            : "bg-washwell-cream border-washwell-gray-light hover:border-washwell-green/50"
+                          isSelected ? "bg-washwell-green-pale border-washwell-green" : "bg-washwell-cream border-washwell-gray-light hover:border-washwell-green/50"
                         }`}
                       >
                         <span className="flex-1 font-semibold text-sm text-washwell-black">{name}</span>
-                        <span className={`font-display font-bold text-sm ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
-                          ${tier.price}
-                        </span>
+                        <span className={`font-display font-bold text-sm ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>${tier.price}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
-
-              {/* Payment Method */}
               <div>
-                <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-3">
-                  Payment Method
-                </label>
+                <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-3">Payment Method</label>
                 <div className="grid grid-cols-2 gap-2">
                   {PAYMENT_METHODS.map((pm) => {
                     const isSelected = newOrder.paymentMethod === pm.value;
                     return (
-                      <button
-                        key={pm.value}
-                        onClick={() => setNewOrder((p) => ({ ...p, paymentMethod: pm.value }))}
+                      <button key={pm.value} onClick={() => setNewOrder((p) => ({ ...p, paymentMethod: pm.value }))}
                         className={`flex flex-col items-start px-4 py-3 rounded-xl border-2 transition-all text-left ${
-                          isSelected
-                            ? "bg-washwell-green-pale border-washwell-green"
-                            : "bg-washwell-cream border-washwell-gray-light hover:border-washwell-green/50"
+                          isSelected ? "bg-washwell-green-pale border-washwell-green" : "bg-washwell-cream border-washwell-gray-light hover:border-washwell-green/50"
                         }`}
                       >
-                        <span className={`font-bold text-sm ${isSelected ? "text-washwell-green" : "text-washwell-black"}`}>
-                          {pm.label}
-                        </span>
+                        <span className={`font-bold text-sm ${isSelected ? "text-washwell-green" : "text-washwell-black"}`}>{pm.label}</span>
                         <span className="text-xs text-washwell-gray-dark mt-0.5">{pm.desc}</span>
                       </button>
                     );
@@ -365,25 +468,17 @@ export default function ConciergePortal() {
                 </div>
               </div>
             </div>
-
             <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowNewOrder(false)}
+              <button onClick={() => setShowNewOrder(false)}
                 className="flex-1 py-3 border-2 border-washwell-gray-light text-washwell-black font-semibold rounded-xl hover:bg-washwell-cream transition-colors"
               >
                 Cancel
               </button>
-              <button
-                onClick={handleNewOrderSubmit}
+              <button onClick={handleNewOrderSubmit}
                 disabled={submitting || !newOrder.firstName || !newOrder.roomNumber}
                 className="flex-1 py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {submitting
-                  ? "Placing Order..."
-                  : newOrder.paymentMethod === "stripe"
-                    ? "Open Payment Link →"
-                    : "Place Order →"
-                }
+                {submitting ? "Placing Order..." : newOrder.paymentMethod === "stripe" ? "Open Payment Link →" : "Place Order →"}
               </button>
             </div>
           </div>
