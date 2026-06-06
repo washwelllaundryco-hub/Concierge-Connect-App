@@ -12,11 +12,13 @@ export default function GuestPortal() {
 
   const guestUser = {
     id:          user.id,
-    firstName:   user.firstName,
-    lastName:    user.lastName,
+    firstName:   user.firstName || "",
+    lastName:    user.lastName  || "",
     email:       user.primaryEmailAddress?.emailAddress,
-    roomNumber:  user.publicMetadata?.roomNumber  || "–",
+    roomNumber:  user.publicMetadata?.roomNumber  || "",
     hotelName:   user.publicMetadata?.hotelName   || "Your Hotel",
+    hotelId:     user.publicMetadata?.hotelId     || "the-hotel",
+    clerkUserId: user.id,
   };
 
   if (view === "checkout" && orderDetails) {

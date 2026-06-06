@@ -2,77 +2,83 @@ import { useState, useEffect } from "react";
 import { PRICING_TIERS } from "../constants";
 
 const STATUS_CONFIG = {
-  pending:          { label: "Order Received",    step: 1 },
-  picked_up:        { label: "Picked Up",          step: 2 },
-  in_wash:          { label: "In Wash",            step: 3 },
-  drying:           { label: "Drying",             step: 4 },
-  folding:          { label: "Folding",            step: 5 },
-  out_for_delivery: { label: "Out for Delivery",   step: 6 },
-  delivered:        { label: "Delivered",          step: 7 },
+  pending:                { label: "Order Received",    step: 1 },
+  paid_pending_technician:{ label: "Order Received",    step: 1 },
+  picked_up:              { label: "Picked Up",          step: 2 },
+  in_wash:                { label: "In Wash",            step: 3 },
+  drying:                 { label: "Drying",             step: 4 },
+  folding:                { label: "Folding",            step: 5 },
+  out_for_delivery:       { label: "Out for Delivery",   step: 6 },
+  delivered:              { label: "Delivered",          step: 7 },
 };
 
 const TOTAL_STEPS = 7;
 
 export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDelivery }) {
   const [selectedTier, setSelectedTier] = useState("Standard Load");
+  const [firstName, setFirstName] = useState(user.firstName || "");
+  const [lastName, setLastName]   = useState(user.lastName  || "");
+  const [roomNumber, setRoomNumber] = useState(user.roomNumber || "");
   const [activeOrder, setActiveOrder] = useState(null);
   const [sustainability, setSustainability] = useState({
-    totalOrders: 7,
-    waterSavedGallons: 147,
-    energySavedKwh: 6.3,
-    co2AvoidedLbs: 5.8,
+    totalOrders: 0,
+    waterSavedGallons: 0,
+    energySavedKwh: 0,
+    co2AvoidedLbs: 0,
   });
 
+  // Fetch real active order
   useEffect(() => {
-    setTimeout(() => {
-      setActiveOrder({
-        id: "ord-20241",
-        orderNumber: "WW-20241",
-        status: "out_for_delivery",
-        estimatedDelivery: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      });
-    }, 500);
-  }, []);
-
-  useEffect(() => {
-    let ws;
-    try {
-      ws = new WebSocket(
-        import.meta.env.VITE_WEBSOCKET_URL
-          ? `${import.meta.env.VITE_WEBSOCKET_URL}/sustainability`
-          : "ws://localhost:3001/sustainability"
-      );
-      ws.onmessage = (event) => {
-        const update = JSON.parse(event.data);
-        if (update.type === "sustainability_update") setSustainability(update.data);
-      };
-    } catch {
-      // fall through to static data
+    async function fetchOrders() {
+      try {
+        const res = await fetch(`/api/guest/orders?clerkUserId=${user.id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const active = (data.orders || []).find(
+          (o) => !["completed", "cancelled"].includes(o.status)
+        );
+        setActiveOrder(active || null);
+      } catch {
+        // no active order
+      }
     }
-    return () => ws?.close();
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 15000);
+    return () => clearInterval(interval);
+  }, [user.id]);
+
+  // Fetch sustainability totals
+  useEffect(() => {
+    async function fetchSustainability() {
+      try {
+        const res = await fetch("/api/sustainability/sync", { method: "GET" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.totals) setSustainability(data.totals);
+      } catch {
+        // keep defaults
+      }
+    }
+    fetchSustainability();
   }, []);
 
   const handleRequestPickup = () => {
+    if (!firstName.trim()) return;
     const tier = PRICING_TIERS[selectedTier];
     onNavigateToCheckout({
-      orderId: `ord-${Date.now()}`,
-      orderNumber: `WW-${Date.now()}`,
-      guestName: `${user.firstName} ${user.lastName}`,
-      roomNumber: user.roomNumber,
-      tier: selectedTier,
-      stripeUrl: tier.stripeUrl,
+      firstName:      firstName.trim(),
+      lastName:       lastName.trim(),
+      roomNumber:     roomNumber.trim() || user.roomNumber,
+      tier:           selectedTier,
+      stripeUrl:      tier.stripeUrl,
       estimatedTotal: tier.price,
+      hotelId:        user.hotelId,
+      clerkUserId:    user.clerkUserId,
     });
   };
 
   const currentStatus = activeOrder ? STATUS_CONFIG[activeOrder.status] : null;
-  const progressPct = currentStatus ? (currentStatus.step / TOTAL_STEPS) * 100 : 0;
-
-  const etaMinutes = activeOrder
-    ? Math.max(0, Math.floor((new Date(activeOrder.estimatedDelivery) - Date.now()) / 60000))
-    : 0;
-  const etaHours = Math.floor(etaMinutes / 60);
-  const etaMins = etaMinutes % 60;
+  const progressPct   = currentStatus ? (currentStatus.step / TOTAL_STEPS) * 100 : 0;
 
   return (
     <div className="min-h-screen bg-washwell-cream font-body">
@@ -85,14 +91,54 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
           </div>
 
           <h1 className="text-4xl md:text-5xl font-display font-bold text-washwell-black mb-3 tracking-tight">
-            Welcome back, {user.firstName}
+            {firstName ? `Welcome back, ${firstName}` : "Welcome to Washwell"}
           </h1>
           <p className="text-lg text-washwell-gray-dark mb-2 font-medium">
-            {user.hotelName} &middot; Room {user.roomNumber}
+            {user.hotelName} {roomNumber && <span>&middot; Room {roomNumber}</span>}
           </p>
           <p className="text-sm text-washwell-gray uppercase tracking-widest font-semibold mb-10">
             Washwell Laundry Co.
           </p>
+
+          {/* Name + Room fields */}
+          <div className="w-full max-w-lg mx-auto mb-6 grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-washwell-gray uppercase tracking-widest mb-1 text-left">
+                First Name <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="Jane"
+                className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-medium text-washwell-black bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-washwell-gray uppercase tracking-widest mb-1 text-left">
+                Last Name
+              </label>
+              <input
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Smith"
+                className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-medium text-washwell-black bg-white"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-bold text-washwell-gray uppercase tracking-widest mb-1 text-left">
+                Room Number <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={roomNumber}
+                onChange={(e) => setRoomNumber(e.target.value)}
+                placeholder="e.g. 412"
+                className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-medium text-washwell-black bg-white"
+              />
+            </div>
+          </div>
 
           {/* Service Tier Selector */}
           <div className="w-full max-w-lg mx-auto mb-8 text-left">
@@ -143,7 +189,8 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
 
           <button
             onClick={handleRequestPickup}
-            className="w-full md:w-auto px-16 py-5 bg-washwell-green hover:bg-washwell-green-dark text-white font-display font-bold text-xl rounded-2xl shadow-xl transition-all duration-300 tracking-wide uppercase"
+            disabled={!firstName.trim() || !roomNumber.trim()}
+            className="w-full md:w-auto px-16 py-5 bg-washwell-green hover:bg-washwell-green-dark text-white font-display font-bold text-xl rounded-2xl shadow-xl transition-all duration-300 tracking-wide uppercase disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Request Pickup
           </button>
@@ -168,10 +215,6 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
               <h2 className="text-3xl font-display font-bold text-washwell-black mb-2">
                 Order {activeOrder.orderNumber}
               </h2>
-              <p className="text-washwell-gray-dark">
-                Estimated delivery:{" "}
-                <span className="font-semibold">{etaHours}h {etaMins}m</span>
-              </p>
             </div>
 
             {/* Progress bar */}
@@ -194,17 +237,17 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
 
             {/* Steps */}
             <div className="grid grid-cols-4 md:grid-cols-7 gap-3">
-              {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-                const isActive = config.step === currentStatus.step;
+              {Object.entries(STATUS_CONFIG)
+                .filter(([, c], i, arr) => arr.findIndex(([, x]) => x.step === c.step) === i)
+                .sort(([, a], [, b]) => a.step - b.step)
+                .map(([key, config]) => {
+                const isActive    = config.step === currentStatus.step;
                 const isCompleted = config.step < currentStatus.step;
                 return (
-                  <div
-                    key={key}
-                    className={`flex flex-col items-center gap-2 transition-all duration-300 ${isActive ? "scale-105" : ""}`}
-                  >
+                  <div key={key} className={`flex flex-col items-center gap-2 transition-all duration-300 ${isActive ? "scale-105" : ""}`}>
                     <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
                       isCompleted ? "bg-washwell-green border-washwell-green" :
-                      isActive ? "bg-washwell-green border-washwell-green" :
+                      isActive    ? "bg-washwell-green border-washwell-green" :
                       "bg-white border-washwell-gray-light"
                     }`}>
                       {isCompleted ? (
@@ -217,9 +260,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                         </span>
                       )}
                     </div>
-                    <span className={`text-xs font-semibold text-center leading-tight ${
-                      isActive ? "text-washwell-black" : "text-washwell-gray"
-                    }`}>
+                    <span className={`text-xs font-semibold text-center leading-tight ${isActive ? "text-washwell-black" : "text-washwell-gray"}`}>
                       {config.label}
                     </span>
                   </div>
@@ -249,12 +290,6 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
       <section className="bg-washwell-black px-6 py-16">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 mb-4">
-              <div className="w-2 h-2 bg-washwell-green rounded-full animate-pulse" />
-              <span className="text-washwell-gray text-xs font-bold uppercase tracking-widest">
-                Live Updates
-              </span>
-            </div>
             <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-3">
               Your Environmental Impact
             </h2>
@@ -265,16 +300,13 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
 
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              { metric: "H₂O", value: sustainability.waterSavedGallons, label: "Gallons Saved", sub: `≈ ${Math.round(sustainability.waterSavedGallons / 17.2)} showers` },
-              { metric: "kWh", value: sustainability.energySavedKwh, label: "Energy Saved", sub: `≈ ${Math.round(sustainability.energySavedKwh / 0.012)} phone charges` },
-              { metric: "CO₂", value: sustainability.co2AvoidedLbs, label: "Lbs Avoided", sub: "Making the planet greener" },
+              { metric: "H₂O", value: sustainability.waterSavedGallons, label: "Gallons Saved", sub: `≈ ${Math.round((sustainability.waterSavedGallons || 0) / 17.2)} showers` },
+              { metric: "kWh", value: sustainability.energySavedKwh,    label: "Energy Saved",  sub: `≈ ${Math.round((sustainability.energySavedKwh || 0) / 0.012)} phone charges` },
+              { metric: "CO₂", value: sustainability.co2AvoidedLbs,     label: "Lbs Avoided",   sub: "Making the planet greener" },
             ].map(({ metric, value, label, sub }) => (
-              <div
-                key={label}
-                className="bg-white/5 border border-washwell-green/20 rounded-2xl p-8 hover:border-washwell-green/60 transition-all duration-300"
-              >
+              <div key={label} className="bg-white/5 border border-washwell-green/20 rounded-2xl p-8 hover:border-washwell-green/60 transition-all duration-300">
                 <div className="text-xs font-bold text-washwell-green uppercase tracking-widest mb-3">{metric}</div>
-                <div className="font-display text-5xl font-bold text-white mb-1">{value}</div>
+                <div className="font-display text-5xl font-bold text-white mb-1">{value ?? 0}</div>
                 <div className="text-sm text-washwell-gray uppercase tracking-wider font-semibold mb-2">{label}</div>
                 <div className="text-xs text-washwell-gray/60">{sub}</div>
               </div>
