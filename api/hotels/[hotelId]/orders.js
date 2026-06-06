@@ -21,6 +21,8 @@ export default async function handler(req, res) {
         lo.special_instructions AS "specialInstructions",
         lo.washer_machine_number AS "washerNumber",
         lo.dryer_machine_number  AS "dryerNumber",
+        lo.balance_due   AS "balanceDue",
+        lo.correct_tier  AS "correctTier",
         lo.created_at    AS "createdAt",
         u.first_name     AS "guestFirstName",
         u.last_name      AS "guestLastName",
@@ -31,7 +33,7 @@ export default async function handler(req, res) {
       WHERE lo.hotel_id = (
         SELECT id FROM hotels WHERE slug = ${hotelId} LIMIT 1
       )
-      AND lo.status != 'completed'
+      AND lo.status != 'cancelled'
       ORDER BY lo.created_at DESC
       LIMIT 100
     `;

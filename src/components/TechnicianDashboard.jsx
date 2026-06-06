@@ -1,10 +1,5 @@
 import { useState, useEffect } from "react";
-
-const MOCK_ORDERS = [
-  { id: "ord-20241", orderNumber: "WW-20241", guestName: "Marcus Webb",   roomNumber: "412", status: "paid_pending_technician", paymentVerified: true,  totalWeightLbs: null, washerNumber: null, dryerNumber: null },
-  { id: "ord-20242", orderNumber: "WW-20242", guestName: "Sarah Chen",    roomNumber: "315", status: "in_wash",                 paymentVerified: true,  totalWeightLbs: 22.4, washerNumber: null, dryerNumber: null },
-  { id: "ord-20243", orderNumber: "WW-20243", guestName: "James Rivera",  roomNumber: "201", status: "drying",                  paymentVerified: true,  totalWeightLbs: 18.1, washerNumber: 3,    dryerNumber: null },
-];
+import { PRICING_TIERS, getCorrectTier } from "../constants";
 
 const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", "out_for_delivery", "completed"];
 
@@ -24,26 +19,51 @@ export default function TechnicianDashboard() {
       }
     }
     fetchOrders();
-    const interval = setInterval(fetchOrders, 15000); // refresh every 15s
+    const interval = setInterval(fetchOrders, 15000);
     return () => clearInterval(interval);
   }, []);
+
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [weightInput, setWeightInput] = useState("");
   const [machineInputs, setMachineInputs] = useState({});
+  const [confirmCancelId, setConfirmCancelId] = useState(null);
 
-  const handleStatusUpdate = async (orderId, newStatus, weight = null) => {
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId
-          ? { ...o, status: newStatus, totalWeightLbs: weight ?? o.totalWeightLbs }
-          : o
-      )
-    );
+  // Derived upgrade info for the weight modal
+  const upgradeInfo = (() => {
+    if (!selectedOrder || !weightInput) return null;
+    const w = parseFloat(weightInput);
+    if (!w || w <= 0) return null;
+    const paidTier    = selectedOrder.tier || "Essential Load";
+    const correctTier = getCorrectTier(w);
+    const paidPrice   = parseFloat(PRICING_TIERS[paidTier]?.price  || 0);
+    const newPrice    = parseFloat(PRICING_TIERS[correctTier]?.price || 0);
+    if (newPrice <= paidPrice) return null; // no upgrade needed
+    return { paidTier, correctTier, balanceDue: (newPrice - paidPrice).toFixed(2) };
+  })();
+
+  const handleStatusUpdate = async (orderId, newStatus, weight = null, upgrade = null) => {
+    if (newStatus === "cancelled") {
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+    } else {
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? { ...o, status: newStatus, totalWeightLbs: weight ?? o.totalWeightLbs }
+            : o
+        )
+      );
+    }
+
     await fetch(`/api/orders/${orderId}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus, weight }),
+      body: JSON.stringify({
+        status: newStatus,
+        weight,
+        balanceDue:  upgrade?.balanceDue  ?? null,
+        correctTier: upgrade?.correctTier ?? null,
+      }),
     }).catch(() => {});
 
     if (newStatus === "completed") {
@@ -86,6 +106,8 @@ export default function TechnicianDashboard() {
     return null;
   };
 
+  const cancelOrder = confirmCancelId ? orders.find((o) => o.id === confirmCancelId) : null;
+
   return (
     <div className="min-h-screen bg-washwell-cream font-body">
       <header className="bg-washwell-black border-b-4 border-washwell-green px-6 py-6">
@@ -110,6 +132,13 @@ export default function TechnicianDashboard() {
         <h2 className="text-2xl font-display font-bold text-washwell-black mb-8">
           Active Orders ({orders.length})
         </h2>
+
+        {orders.length === 0 && (
+          <div className="text-center py-20 text-washwell-gray">
+            <p className="text-lg font-semibold">No active orders</p>
+            <p className="text-sm mt-1">New orders will appear here automatically.</p>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-6">
           {orders.map((order) => (
@@ -162,7 +191,6 @@ export default function TechnicianDashboard() {
               {/* Machine number inputs */}
               {(order.status === "in_wash" || order.status === "drying" || order.status === "folding") && (
                 <div className="mb-4 grid grid-cols-2 gap-3">
-                  {/* Washer */}
                   <div>
                     <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
                       Washer #
@@ -191,8 +219,6 @@ export default function TechnicianDashboard() {
                       <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{order.washerNumber}</p>
                     )}
                   </div>
-
-                  {/* Dryer */}
                   <div>
                     <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
                       Dryer #
@@ -240,6 +266,16 @@ export default function TechnicianDashboard() {
                   {actionLabel(order)}
                 </button>
               )}
+
+              {/* Cancel button */}
+              <div className="mt-3 text-center">
+                <button
+                  onClick={() => setConfirmCancelId(order.id)}
+                  className="text-xs text-red-400 hover:text-red-600 font-semibold underline underline-offset-2 transition-colors"
+                >
+                  Cancel Order
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -249,17 +285,53 @@ export default function TechnicianDashboard() {
       {showWeightModal && selectedOrder && (
         <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-washwell-green">
-            <h3 className="text-2xl font-display font-bold text-washwell-black mb-2">Log Weight</h3>
-            <p className="text-sm text-washwell-gray-dark mb-6">Order {selectedOrder.orderNumber}</p>
+            <h3 className="text-2xl font-display font-bold text-washwell-black mb-1">Log Weight</h3>
+            <p className="text-sm text-washwell-gray-dark mb-2">Order {selectedOrder.orderNumber}</p>
+            <p className="text-xs text-washwell-gray mb-5">
+              Paid tier: <span className="font-bold text-washwell-black">{selectedOrder.tier}</span>
+              {" · max "}
+              <span className="font-bold text-washwell-black">
+                {selectedOrder.tier === "Bulk Service" ? "100" :
+                 selectedOrder.tier === "Executive Load" ? "75" :
+                 selectedOrder.tier === "Premium Load" ? "50" :
+                 selectedOrder.tier === "Standard Load" ? "30" : "15"} lbs
+              </span>
+            </p>
             <input
               type="number"
               step="0.1"
+              min="0.1"
               placeholder="0.0"
               value={weightInput}
               onChange={(e) => setWeightInput(e.target.value)}
               autoFocus
-              className="w-full px-5 py-4 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all text-2xl font-display font-bold text-washwell-black mb-6"
+              className="w-full px-5 py-4 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all text-2xl font-display font-bold text-washwell-black mb-4"
             />
+
+            {/* Upgrade warning */}
+            {upgradeInfo && (
+              <div className="mb-5 px-4 py-4 bg-orange-50 border-2 border-orange-300 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="font-bold text-orange-800 text-sm">Tier Upgrade Required</p>
+                    <p className="text-orange-700 text-xs mt-1">
+                      This load exceeds <strong>{upgradeInfo.paidTier}</strong> limits.
+                      Correct tier: <strong>{upgradeInfo.correctTier}</strong>.
+                    </p>
+                    <p className="text-orange-800 font-bold text-sm mt-2">
+                      Balance due from guest: ${upgradeInfo.balanceDue}
+                    </p>
+                    <p className="text-orange-600 text-xs mt-1">
+                      Concierge will be notified to collect payment.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
                 onClick={() => { setShowWeightModal(false); setSelectedOrder(null); setWeightInput(""); }}
@@ -271,16 +343,66 @@ export default function TechnicianDashboard() {
                 onClick={() => {
                   const w = parseFloat(weightInput);
                   if (w > 0) {
-                    handleStatusUpdate(selectedOrder.id, "in_wash", w);
+                    handleStatusUpdate(
+                      selectedOrder.id,
+                      "in_wash",
+                      w,
+                      upgradeInfo
+                        ? { balanceDue: upgradeInfo.balanceDue, correctTier: upgradeInfo.correctTier }
+                        : null
+                    );
                     setShowWeightModal(false);
                     setSelectedOrder(null);
                     setWeightInput("");
                   }
                 }}
                 disabled={!weightInput || parseFloat(weightInput) <= 0}
-                className="flex-1 px-6 py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`flex-1 px-6 py-3 text-white font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                  upgradeInfo
+                    ? "bg-orange-500 hover:bg-orange-600"
+                    : "bg-washwell-green hover:bg-washwell-green-dark"
+                }`}
               >
-                Confirm
+                {upgradeInfo ? `Confirm + Flag $${upgradeInfo.balanceDue}` : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Confirmation Modal */}
+      {confirmCancelId && cancelOrder && (
+        <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-red-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-display font-bold text-washwell-black">Cancel Order?</h3>
+            </div>
+            <p className="text-washwell-gray-dark mb-2">
+              You're about to cancel order{" "}
+              <span className="font-bold text-washwell-black">{cancelOrder.orderNumber}</span> for{" "}
+              <span className="font-bold text-washwell-black">{cancelOrder.guestName}</span>.
+            </p>
+            <p className="text-sm text-red-500 font-semibold mb-8">This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmCancelId(null)}
+                className="flex-1 px-6 py-3 border-2 border-washwell-gray-light text-washwell-black font-semibold rounded-xl hover:bg-washwell-cream transition-colors"
+              >
+                Go Back
+              </button>
+              <button
+                onClick={() => {
+                  handleStatusUpdate(confirmCancelId, "cancelled");
+                  setConfirmCancelId(null);
+                }}
+                className="flex-1 px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-lg transition-all"
+              >
+                Cancel Order
               </button>
             </div>
           </div>

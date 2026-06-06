@@ -6,6 +6,14 @@ export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
   try {
+    // Auto-cancel pending_payment orders older than 30 minutes (abandoned checkouts)
+    await sql`
+      UPDATE laundry_orders
+      SET status = 'cancelled', updated_at = NOW()
+      WHERE status = 'pending_payment'
+        AND created_at < NOW() - INTERVAL '30 minutes'
+    `;
+
     const result = await sql`
       SELECT
         lo.id,

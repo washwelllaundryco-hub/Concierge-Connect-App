@@ -6,9 +6,9 @@ export default async function handler(req, res) {
   if (req.method !== "PATCH") return res.status(405).end();
 
   const { orderId } = req.query;
-  const { status, weight } = req.body;
+  const { status, weight, balanceDue, correctTier } = req.body;
 
-  const VALID = ["in_wash", "drying", "folding", "bagged", "out_for_delivery", "completed"];
+  const VALID = ["in_wash", "drying", "folding", "bagged", "out_for_delivery", "completed", "cancelled"];
   if (!VALID.includes(status)) {
     return res.status(400).json({ error: "Invalid status" });
   }
@@ -31,6 +31,15 @@ export default async function handler(req, res) {
       await sql`
         UPDATE laundry_orders
         SET status = ${status}, updated_at = NOW()
+        WHERE id = ${orderId}
+      `;
+    }
+
+    // Store balance due when technician flags a tier overage
+    if (balanceDue && parseFloat(balanceDue) > 0 && correctTier) {
+      await sql`
+        UPDATE laundry_orders
+        SET balance_due = ${parseFloat(balanceDue)}, correct_tier = ${correctTier}
         WHERE id = ${orderId}
       `;
     }

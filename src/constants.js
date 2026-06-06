@@ -26,3 +26,21 @@ export const PRICING_TIERS = {
     stripeUrl: "https://buy.stripe.com/cNibJ280Z2lu9w2deQc3m0q",
   },
 };
+
+// Maximum weight (lbs) included in each tier
+export const TIER_MAX_LBS = {
+  "Essential Load":  15,
+  "Standard Load":   30,
+  "Premium Load":    50,
+  "Executive Load":  75,
+  "Bulk Service":    Infinity,
+};
+
+// Return the correct tier name for a given weight
+export function getCorrectTier(lbs) {
+  if (lbs <= 15) return "Essential Load";
+  if (lbs <= 30) return "Standard Load";
+  if (lbs <= 50) return "Premium Load";
+  if (lbs <= 75) return "Executive Load";
+  return "Bulk Service";
+}

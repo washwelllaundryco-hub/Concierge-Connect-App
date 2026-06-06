@@ -15,13 +15,13 @@ const STATUS_BADGE = {
 };
 
 const STATUS_STEPS = [
-  { key: "paid_pending_technician", label: "Received",    matches: ["pending", "pending_payment", "paid_pending_technician"] },
-  { key: "picked_up",               label: "Picked Up",   matches: ["picked_up"] },
-  { key: "in_wash",                 label: "In Wash",     matches: ["in_wash"] },
-  { key: "drying",                  label: "Drying",      matches: ["drying"] },
-  { key: "folding",                 label: "Folding",      matches: ["folding"] },
-  { key: "out_for_delivery",        label: "Delivering",  matches: ["out_for_delivery"] },
-  { key: "completed",               label: "Delivered",   matches: ["completed", "delivered"] },
+  { key: "paid_pending_technician", label: "Received",   matches: ["pending", "pending_payment", "paid_pending_technician"] },
+  { key: "picked_up",               label: "Picked Up",  matches: ["picked_up"] },
+  { key: "in_wash",                 label: "In Wash",    matches: ["in_wash"] },
+  { key: "drying",                  label: "Drying",     matches: ["drying"] },
+  { key: "folding",                 label: "Folding",    matches: ["folding"] },
+  { key: "out_for_delivery",        label: "Delivering", matches: ["out_for_delivery"] },
+  { key: "completed",               label: "Delivered",  matches: ["completed", "delivered"] },
 ];
 
 const PAYMENT_METHODS = [
@@ -56,6 +56,7 @@ export default function ConciergePortal() {
   const [submitting, setSubmitting]   = useState(false);
   const [successMsg, setSuccessMsg]   = useState("");
   const [stripeLink, setStripeLink]   = useState(null);
+  const [upgradeModal, setUpgradeModal] = useState(null); // { orderId, orderNumber, balanceDue, correctTier, url, loadingLink, cleared }
   const [sustainability, setSustainability] = useState({
     totalOrders: 0, waterSavedGallons: 0, energySavedKwh: 0, co2AvoidedLbs: 0,
   });
@@ -100,7 +101,7 @@ export default function ConciergePortal() {
   const handleNewOrderSubmit = async () => {
     if (!newOrder.firstName || !newOrder.roomNumber) return;
     setSubmitting(true);
-    const tier    = PRICING_TIERS[newOrder.tier];
+    const tier     = PRICING_TIERS[newOrder.tier];
     const isStripe = newOrder.paymentMethod === "stripe";
     try {
       const token = await getToken();
@@ -138,6 +139,48 @@ export default function ConciergePortal() {
     }
     setShowNewOrder(false);
     setNewOrder({ firstName: "", lastName: "", roomNumber: "", tier: "Standard Load", paymentMethod: "stripe" });
+  };
+
+  const handleGetUpgradeLink = async (order) => {
+    setUpgradeModal({
+      orderId:     order.id,
+      orderNumber: order.orderNumber,
+      balanceDue:  order.balanceDue,
+      correctTier: order.correctTier,
+      url:         null,
+      loadingLink: true,
+      cleared:     false,
+    });
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/orders/${order.id}/upgrade-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      setUpgradeModal((prev) => ({ ...prev, url: data.url, loadingLink: false }));
+    } catch {
+      setUpgradeModal((prev) => ({ ...prev, loadingLink: false }));
+    }
+  };
+
+  const handleMarkCollected = async (orderId) => {
+    try {
+      const token = await getToken();
+      await fetch(`/api/orders/${orderId}/upgrade-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "mark_collected" }),
+      });
+      // Update local state
+      setOrders((prev) =>
+        prev.map((o) => o.id === orderId ? { ...o, balanceDue: 0, correctTier: null } : o)
+      );
+      setUpgradeModal((prev) => ({ ...prev, cleared: true }));
+    } catch {
+      // ignore
+    }
   };
 
   return (
@@ -201,12 +244,12 @@ export default function ConciergePortal() {
             <div className="grid md:grid-cols-2 gap-4">
               {activeOrders.map((order) => {
                 const currentStep = getStepIndex(order.status);
-                const pct = Math.round((currentStep / (STATUS_STEPS.length - 1)) * 100);
+                const pct  = Math.round((currentStep / (STATUS_STEPS.length - 1)) * 100);
                 const badge = STATUS_BADGE[order.status] || STATUS_BADGE.pending;
+                const hasBalance = parseFloat(order.balanceDue || 0) > 0;
                 return (
-                  <div key={order.id} className="bg-white rounded-2xl border-2 border-washwell-gray-light p-5">
-                    {/* Order header */}
-                    <div className="flex items-center justify-between mb-4">
+                  <div key={order.id} className={`bg-white rounded-2xl border-2 p-5 ${hasBalance ? "border-orange-300" : "border-washwell-gray-light"}`}>
+                    <div className="flex items-start justify-between mb-4">
                       <div>
                         <span className="font-display text-sm font-bold text-washwell-green bg-washwell-green-pale px-3 py-1 rounded-full border border-washwell-green">
                           {order.orderNumber}
@@ -216,9 +259,19 @@ export default function ConciergePortal() {
                         </p>
                         <p className="text-sm text-washwell-gray-dark">Room {order.roomNumber} · {order.tier}</p>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${badge.color}`}>
-                        {badge.label}
-                      </span>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${badge.color}`}>
+                          {badge.label}
+                        </span>
+                        {hasBalance && (
+                          <button
+                            onClick={() => handleGetUpgradeLink(order)}
+                            className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg transition-all"
+                          >
+                            Balance Due: ${parseFloat(order.balanceDue).toFixed(2)}
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Progress bar */}
@@ -290,11 +343,14 @@ export default function ConciergePortal() {
             </div>
           )}
           {activeOrders.map((order) => {
-            const badge = STATUS_BADGE[order.status] || STATUS_BADGE.pending;
+            const badge      = STATUS_BADGE[order.status] || STATUS_BADGE.pending;
+            const hasBalance = parseFloat(order.balanceDue || 0) > 0;
             return (
               <div
                 key={order.id}
-                className="bg-white rounded-2xl border-2 border-washwell-gray-light px-6 py-5 flex items-center gap-4 hover:shadow-md transition-all"
+                className={`bg-white rounded-2xl border-2 px-6 py-5 flex items-center gap-4 hover:shadow-md transition-all ${
+                  hasBalance ? "border-orange-300" : "border-washwell-gray-light"
+                }`}
               >
                 <div className="hidden md:block">
                   <span className="font-display text-sm font-bold text-washwell-green bg-washwell-green-pale px-3 py-1 rounded-full border border-washwell-green">
@@ -307,19 +363,34 @@ export default function ConciergePortal() {
                   </p>
                   <p className="text-sm text-washwell-gray-dark">
                     Room {order.roomNumber} · {order.tier}
+                    {hasBalance && (
+                      <span className="ml-2 text-orange-600 font-semibold">
+                        → {order.correctTier}
+                      </span>
+                    )}
                   </p>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${badge.color}`}>
-                  {badge.label}
-                </span>
-                {order.status === "out_for_delivery" && (
-                  <button
-                    onClick={() => navigate(`/track/${order.id}`)}
-                    className="px-4 py-2 bg-washwell-black hover:opacity-90 text-white text-sm font-bold rounded-xl transition-all"
-                  >
-                    Track
-                  </button>
-                )}
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${badge.color}`}>
+                    {badge.label}
+                  </span>
+                  {hasBalance && (
+                    <button
+                      onClick={() => handleGetUpgradeLink(order)}
+                      className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg transition-all"
+                    >
+                      Balance Due ${parseFloat(order.balanceDue).toFixed(2)}
+                    </button>
+                  )}
+                  {order.status === "out_for_delivery" && (
+                    <button
+                      onClick={() => navigate(`/track/${order.id}`)}
+                      className="px-4 py-2 bg-washwell-black hover:opacity-90 text-white text-sm font-bold rounded-xl transition-all"
+                    >
+                      Track
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -373,9 +444,9 @@ export default function ConciergePortal() {
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              { metric: "H₂O", value: sustainability.waterSavedGallons, label: "Gallons Saved",   sub: `≈ ${Math.round((sustainability.waterSavedGallons || 0) / 17.2)} showers` },
-              { metric: "kWh", value: sustainability.energySavedKwh,    label: "Energy Saved",    sub: `≈ ${Math.round((sustainability.energySavedKwh    || 0) / 0.012)} phone charges` },
-              { metric: "CO₂", value: sustainability.co2AvoidedLbs,     label: "Lbs CO₂ Avoided", sub: "Making the planet greener" },
+              { metric: "H₂O", value: sustainability.waterSavedGallons, label: "Gallons Saved",    sub: `≈ ${Math.round((sustainability.waterSavedGallons || 0) / 17.2)} showers` },
+              { metric: "kWh", value: sustainability.energySavedKwh,    label: "Energy Saved",     sub: `≈ ${Math.round((sustainability.energySavedKwh    || 0) / 0.012)} phone charges` },
+              { metric: "CO₂", value: sustainability.co2AvoidedLbs,     label: "Lbs CO₂ Avoided",  sub: "Making the planet greener" },
             ].map(({ metric, value, label, sub }) => (
               <div key={label} className="bg-white/5 border border-washwell-green/20 rounded-2xl p-8 hover:border-washwell-green/60 transition-all">
                 <div className="text-xs font-bold text-washwell-green uppercase tracking-widest mb-3">{metric}</div>
@@ -393,6 +464,94 @@ export default function ConciergePortal() {
         </div>
       </section>
 
+      {/* Upgrade / Balance Due Modal */}
+      {upgradeModal && (
+        <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-orange-300">
+            {upgradeModal.cleared ? (
+              <>
+                <div className="text-center mb-6">
+                  <div className="w-14 h-14 bg-washwell-green rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-display font-bold text-washwell-black">Balance Cleared</h3>
+                  <p className="text-sm text-washwell-gray-dark mt-1">Order {upgradeModal.orderNumber} balance has been marked as collected.</p>
+                </div>
+                <button
+                  onClick={() => setUpgradeModal(null)}
+                  className="w-full py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl transition-all"
+                >
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-display font-bold text-washwell-black">Balance Due</h3>
+                </div>
+                <p className="text-sm text-washwell-gray-dark mb-1">
+                  Order <strong>{upgradeModal.orderNumber}</strong> exceeded its paid tier.
+                </p>
+                <p className="text-sm text-washwell-gray-dark mb-5">
+                  Upgraded to <strong className="text-washwell-black">{upgradeModal.correctTier}</strong>.
+                  Guest owes <strong className="text-orange-600">${parseFloat(upgradeModal.balanceDue).toFixed(2)}</strong>.
+                </p>
+
+                {upgradeModal.loadingLink ? (
+                  <div className="py-6 text-center text-washwell-gray text-sm">Generating Stripe link…</div>
+                ) : upgradeModal.url ? (
+                  <>
+                    <div className="bg-washwell-cream rounded-xl px-4 py-3 mb-4 break-all text-xs font-medium text-washwell-black border-2 border-washwell-gray-light">
+                      {upgradeModal.url}
+                    </div>
+                    <div className="flex gap-3 mb-4">
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(upgradeModal.url); }}
+                        className="flex-1 py-3 border-2 border-orange-400 text-orange-600 font-bold rounded-xl hover:bg-orange-50 transition-colors text-sm"
+                      >
+                        Copy Link
+                      </button>
+                      <a
+                        href={upgradeModal.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg transition-all text-center text-sm"
+                      >
+                        Open →
+                      </a>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-red-500 mb-4">Failed to generate link. Try again.</p>
+                )}
+
+                <div className="border-t border-washwell-gray-light pt-4 flex gap-3">
+                  <button
+                    onClick={() => setUpgradeModal(null)}
+                    className="flex-1 py-2.5 border-2 border-washwell-gray-light text-washwell-black font-semibold rounded-xl hover:bg-washwell-cream transition-colors text-sm"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => handleMarkCollected(upgradeModal.orderId)}
+                    className="flex-1 py-2.5 border-2 border-washwell-green text-washwell-green font-bold rounded-xl hover:bg-washwell-green-pale transition-colors text-sm"
+                  >
+                    Mark Collected ✓
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Stripe Payment Link Modal */}
       {stripeLink && (
         <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -400,7 +559,6 @@ export default function ConciergePortal() {
             <h3 className="text-2xl font-display font-bold text-washwell-black mb-1">Order Created</h3>
             <p className="text-sm text-washwell-gray-dark mb-6">
               Share this payment link with the guest for order <strong>{stripeLink.orderNumber}</strong>.
-              The order will confirm automatically once payment is complete.
             </p>
             <div className="bg-washwell-cream rounded-xl px-4 py-3 mb-4 break-all text-sm font-medium text-washwell-black border-2 border-washwell-gray-light">
               {stripeLink.url}
