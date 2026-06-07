@@ -9,18 +9,15 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   const {
-    // Concierge flow
     guestId,
     placedByUserId,
     specialInstructions,
-    // Self-service flow
     clerkUserId,
     firstName,
     lastName,
     roomNumber,
     pickupAddress,
     unitNumber,
-    // Both flows
     tier,
     paymentMethod,
     hotelId,
@@ -30,29 +27,23 @@ export default async function handler(req, res) {
     let resolvedGuestId = guestId;
     let guestData = null;
 
-    // ── Self-service flow: upsert user + hotel_guest ──────────────────────────
     if (!resolvedGuestId && clerkUserId) {
       const effectiveHotelId = hotelId || "the-hotel";
 
-      // 1. Upsert user by clerk_user_id
       const userResult = await sql`
-        INSERT INTO users (clerk_user_id, first_name, last_name, updated_at)
-        VALUES (${clerkUserId}, ${firstName || ""}, ${lastName || ""}, NOW())
+        INSERT INTO users (clerk_user_id, first_name, last_name)
+        VALUES (${clerkUserId}, ${firstName || ""}, ${lastName || ""})
         ON CONFLICT (clerk_user_id)
         DO UPDATE SET
           first_name = EXCLUDED.first_name,
-          last_name  = EXCLUDED.last_name,
-          updated_at = NOW()
+          last_name  = EXCLUDED.last_name
         RETURNING id
       `;
       const userId = userResult.rows[0].id;
 
-      // 2. Get hotel name
       const hotelResult = await sql`SELECT id, name FROM hotels WHERE id = ${effectiveHotelId} LIMIT 1`;
       const hotel = hotelResult.rows[0] || { id: effectiveHotelId, name: "Washwell Laundry" };
 
-      // 3. Find or create hotel_guest record
-      // For direct customers: room_number stores unit #, pickup_address stores street address
       const effectiveRoom = pickupAddress ? (unitNumber || null) : (roomNumber || null);
       const existingGuest = await sql`
         SELECT id FROM hotel_guests WHERE user_id = ${userId} AND hotel_id = ${hotel.id} LIMIT 1
@@ -86,7 +77,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "guestId or clerkUserId is required" });
     }
 
-    // ── Concierge flow: look up existing guest record ─────────────────────────
     if (!guestData) {
       const guest = await sql`
         SELECT hg.id, hg.room_number, hg.hotel_id,
@@ -107,7 +97,6 @@ export default async function handler(req, res) {
     }
 
     const effectiveTier  = tier || "Standard Load";
-    // "pay_after_weigh" orders are confirmed immediately (technician will weigh and send payment link)
     const autoApproved   = paymentMethod !== "stripe";
     const initialStatus  = autoApproved ? "paid_pending_technician" : "pending_payment";
 
