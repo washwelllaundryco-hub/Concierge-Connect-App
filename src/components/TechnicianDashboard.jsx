@@ -29,16 +29,17 @@ export default function TechnicianDashboard() {
   const [machineInputs, setMachineInputs] = useState({});
   const [confirmCancelId, setConfirmCancelId] = useState(null);
 
-  // Derived upgrade info for the weight modal
+  // Derived upgrade info for the weight modal (hotel tier customers only)
   const upgradeInfo = (() => {
     if (!selectedOrder || !weightInput) return null;
+    if (selectedOrder.paymentMethod === "pay_after_weigh") return null; // direct customer — no upgrade, price set after weigh
     const w = parseFloat(weightInput);
     if (!w || w <= 0) return null;
     const paidTier    = selectedOrder.tier || "Essential Load";
     const correctTier = getCorrectTier(w);
     const paidPrice   = parseFloat(PRICING_TIERS[paidTier]?.price  || 0);
     const newPrice    = parseFloat(PRICING_TIERS[correctTier]?.price || 0);
-    if (newPrice <= paidPrice) return null; // no upgrade needed
+    if (newPrice <= paidPrice) return null;
     return { paidTier, correctTier, balanceDue: (newPrice - paidPrice).toFixed(2) };
   })();
 
@@ -141,143 +142,165 @@ export default function TechnicianDashboard() {
         )}
 
         <div className="grid md:grid-cols-2 gap-6">
-          {orders.map((order) => (
-            <div
-              key={order.id}
-              className="bg-white rounded-3xl shadow-lg border-2 border-washwell-gray-light p-6 hover:shadow-xl transition-all"
-            >
-              {/* Order header */}
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <div className="inline-block px-4 py-1.5 bg-washwell-green-pale border-2 border-washwell-green rounded-full mb-3">
-                    <span className="font-display text-sm font-bold text-washwell-green">
-                      {order.orderNumber}
-                    </span>
+          {orders.map((order) => {
+            const isDirect = !!order.pickupAddress;
+            return (
+              <div
+                key={order.id}
+                className="bg-white rounded-3xl shadow-lg border-2 border-washwell-gray-light p-6 hover:shadow-xl transition-all"
+              >
+                {/* Order header */}
+                <div className="flex items-start justify-between mb-6">
+                  <div>
+                    <div className="inline-flex items-center gap-2 mb-3">
+                      <span className="px-4 py-1.5 bg-washwell-green-pale border-2 border-washwell-green rounded-full font-display text-sm font-bold text-washwell-green">
+                        {order.orderNumber}
+                      </span>
+                      {isDirect && (
+                        <span className="px-2 py-1 bg-blue-100 border border-blue-300 rounded-full text-xs font-bold text-blue-700 uppercase tracking-wide">
+                          Direct
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-xl font-display font-bold text-washwell-black mb-1">
+                      {order.guestName}
+                    </h3>
+                    {isDirect ? (
+                      <div>
+                        <p className="text-sm text-washwell-gray-dark">{order.pickupAddress}</p>
+                        {order.roomNumber && (
+                          <p className="text-xs text-washwell-gray">Unit {order.roomNumber}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-washwell-gray-dark">Room {order.roomNumber}</p>
+                    )}
                   </div>
-                  <h3 className="text-xl font-display font-bold text-washwell-black mb-1">
-                    {order.guestName}
-                  </h3>
-                  <p className="text-sm text-washwell-gray-dark">Room {order.roomNumber}</p>
+                  {order.paymentVerified && (
+                    <div className="px-4 py-2 bg-washwell-green rounded-xl border-2 border-washwell-green-dark flex items-center gap-2 shadow-lg">
+                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-white text-xs font-bold uppercase tracking-wider">Paid</span>
+                    </div>
+                  )}
+                  {isDirect && !order.paymentVerified && (
+                    <div className="px-4 py-2 bg-yellow-100 rounded-xl border-2 border-yellow-300 flex items-center gap-2">
+                      <span className="text-yellow-800 text-xs font-bold uppercase tracking-wider">Pay After Weigh</span>
+                    </div>
+                  )}
                 </div>
-                {order.paymentVerified && (
-                  <div className="px-4 py-2 bg-washwell-green rounded-xl border-2 border-washwell-green-dark flex items-center gap-2 shadow-lg">
-                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    <span className="text-white text-xs font-bold uppercase tracking-wider">Paid</span>
+
+                {/* Status */}
+                <div className="mb-4 p-4 bg-washwell-cream rounded-xl border-2 border-washwell-gray-light">
+                  <div className="text-xs text-washwell-gray uppercase tracking-wider font-semibold mb-1">
+                    Current Status
+                  </div>
+                  <div className="text-lg font-display font-bold text-washwell-black capitalize">
+                    {order.status.replace(/_/g, " ")}
+                  </div>
+                </div>
+
+                {/* Weight */}
+                {order.totalWeightLbs && (
+                  <div className="mb-4 text-center">
+                    <div className="text-3xl font-display font-bold text-washwell-green">
+                      {order.totalWeightLbs} lbs
+                    </div>
                   </div>
                 )}
-              </div>
 
-              {/* Status */}
-              <div className="mb-4 p-4 bg-washwell-cream rounded-xl border-2 border-washwell-gray-light">
-                <div className="text-xs text-washwell-gray uppercase tracking-wider font-semibold mb-1">
-                  Current Status
-                </div>
-                <div className="text-lg font-display font-bold text-washwell-black capitalize">
-                  {order.status.replace(/_/g, " ")}
-                </div>
-              </div>
-
-              {/* Weight */}
-              {order.totalWeightLbs && (
-                <div className="mb-4 text-center">
-                  <div className="text-3xl font-display font-bold text-washwell-green">
-                    {order.totalWeightLbs} lbs
-                  </div>
-                </div>
-              )}
-
-              {/* Machine number inputs */}
-              {(order.status === "in_wash" || order.status === "drying" || order.status === "folding") && (
-                <div className="mb-4 grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
-                      Washer #
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="—"
-                        defaultValue={order.washerNumber || ""}
-                        onChange={(e) =>
-                          setMachineInputs((p) => ({ ...p, [`${order.id}_washer`]: e.target.value }))
-                        }
-                        className="w-full px-3 py-2 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-display font-bold text-washwell-black text-center"
-                      />
-                      <button
-                        onClick={() =>
-                          handleMachineAssign(order.id, "washer", machineInputs[`${order.id}_washer`] || order.washerNumber)
-                        }
-                        className="px-3 py-2 bg-washwell-green text-white rounded-xl font-bold text-sm hover:bg-washwell-green-dark transition-all"
-                      >
-                        Set
-                      </button>
+                {/* Machine number inputs */}
+                {(order.status === "in_wash" || order.status === "drying" || order.status === "folding") && (
+                  <div className="mb-4 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
+                        Washer #
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="—"
+                          defaultValue={order.washerNumber || ""}
+                          onChange={(e) =>
+                            setMachineInputs((p) => ({ ...p, [`${order.id}_washer`]: e.target.value }))
+                          }
+                          className="w-full px-3 py-2 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-display font-bold text-washwell-black text-center"
+                        />
+                        <button
+                          onClick={() =>
+                            handleMachineAssign(order.id, "washer", machineInputs[`${order.id}_washer`] || order.washerNumber)
+                          }
+                          className="px-3 py-2 bg-washwell-green text-white rounded-xl font-bold text-sm hover:bg-washwell-green-dark transition-all"
+                        >
+                          Set
+                        </button>
+                      </div>
+                      {order.washerNumber && (
+                        <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{order.washerNumber}</p>
+                      )}
                     </div>
-                    {order.washerNumber && (
-                      <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{order.washerNumber}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
-                      Dryer #
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="—"
-                        defaultValue={order.dryerNumber || ""}
-                        onChange={(e) =>
-                          setMachineInputs((p) => ({ ...p, [`${order.id}_dryer`]: e.target.value }))
-                        }
-                        className="w-full px-3 py-2 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-display font-bold text-washwell-black text-center"
-                      />
-                      <button
-                        onClick={() =>
-                          handleMachineAssign(order.id, "dryer", machineInputs[`${order.id}_dryer`] || order.dryerNumber)
-                        }
-                        className="px-3 py-2 bg-washwell-green text-white rounded-xl font-bold text-sm hover:bg-washwell-green-dark transition-all"
-                      >
-                        Set
-                      </button>
+                    <div>
+                      <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
+                        Dryer #
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="—"
+                          defaultValue={order.dryerNumber || ""}
+                          onChange={(e) =>
+                            setMachineInputs((p) => ({ ...p, [`${order.id}_dryer`]: e.target.value }))
+                          }
+                          className="w-full px-3 py-2 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-display font-bold text-washwell-black text-center"
+                        />
+                        <button
+                          onClick={() =>
+                            handleMachineAssign(order.id, "dryer", machineInputs[`${order.id}_dryer`] || order.dryerNumber)
+                          }
+                          className="px-3 py-2 bg-washwell-green text-white rounded-xl font-bold text-sm hover:bg-washwell-green-dark transition-all"
+                        >
+                          Set
+                        </button>
+                      </div>
+                      {order.dryerNumber && (
+                        <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{order.dryerNumber}</p>
+                      )}
                     </div>
-                    {order.dryerNumber && (
-                      <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{order.dryerNumber}</p>
-                    )}
                   </div>
+                )}
+
+                {/* Action button */}
+                {actionLabel(order) && (
+                  <button
+                    onClick={() => {
+                      if (order.status === "paid_pending_technician") {
+                        setSelectedOrder(order);
+                        setShowWeightModal(true);
+                      } else {
+                        handleStatusUpdate(order.id, nextStatus(order.status));
+                      }
+                    }}
+                    className="w-full py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl transition-all"
+                  >
+                    {actionLabel(order)}
+                  </button>
+                )}
+
+                {/* Cancel button */}
+                <div className="mt-3 text-center">
+                  <button
+                    onClick={() => setConfirmCancelId(order.id)}
+                    className="text-xs text-red-400 hover:text-red-600 font-semibold underline underline-offset-2 transition-colors"
+                  >
+                    Cancel Order
+                  </button>
                 </div>
-              )}
-
-              {/* Action button */}
-              {actionLabel(order) && (
-                <button
-                  onClick={() => {
-                    if (order.status === "paid_pending_technician") {
-                      setSelectedOrder(order);
-                      setShowWeightModal(true);
-                    } else {
-                      handleStatusUpdate(order.id, nextStatus(order.status));
-                    }
-                  }}
-                  className="w-full py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl transition-all"
-                >
-                  {actionLabel(order)}
-                </button>
-              )}
-
-              {/* Cancel button */}
-              <div className="mt-3 text-center">
-                <button
-                  onClick={() => setConfirmCancelId(order.id)}
-                  className="text-xs text-red-400 hover:text-red-600 font-semibold underline underline-offset-2 transition-colors"
-                >
-                  Cancel Order
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </main>
 
@@ -286,17 +309,26 @@ export default function TechnicianDashboard() {
         <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-washwell-green">
             <h3 className="text-2xl font-display font-bold text-washwell-black mb-1">Log Weight</h3>
-            <p className="text-sm text-washwell-gray-dark mb-2">Order {selectedOrder.orderNumber}</p>
-            <p className="text-xs text-washwell-gray mb-5">
-              Paid tier: <span className="font-bold text-washwell-black">{selectedOrder.tier}</span>
-              {" · max "}
-              <span className="font-bold text-washwell-black">
-                {selectedOrder.tier === "Bulk Service" ? "100" :
-                 selectedOrder.tier === "Executive Load" ? "75" :
-                 selectedOrder.tier === "Premium Load" ? "50" :
-                 selectedOrder.tier === "Standard Load" ? "30" : "15"} lbs
-              </span>
-            </p>
+            <p className="text-sm text-washwell-gray-dark mb-5">Order {selectedOrder.orderNumber}</p>
+
+            {selectedOrder.paymentMethod === "pay_after_weigh" ? (
+              <div className="mb-5 px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl text-sm text-blue-800">
+                <p className="font-bold mb-1">Direct Customer — Pay After Weigh</p>
+                <p>Enter the weight to calculate price. A Stripe payment link will be sent after confirming.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-washwell-gray mb-5">
+                Paid tier: <span className="font-bold text-washwell-black">{selectedOrder.tier}</span>
+                {" · max "}
+                <span className="font-bold text-washwell-black">
+                  {selectedOrder.tier === "Bulk Service" ? "100" :
+                   selectedOrder.tier === "Executive Load" ? "75" :
+                   selectedOrder.tier === "Premium Load" ? "50" :
+                   selectedOrder.tier === "Standard Load" ? "30" : "15"} lbs
+                </span>
+              </p>
+            )}
+
             <input
               type="number"
               step="0.1"
@@ -308,7 +340,7 @@ export default function TechnicianDashboard() {
               className="w-full px-5 py-4 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all text-2xl font-display font-bold text-washwell-black mb-4"
             />
 
-            {/* Upgrade warning */}
+            {/* Upgrade warning (hotel customers only) */}
             {upgradeInfo && (
               <div className="mb-5 px-4 py-4 bg-orange-50 border-2 border-orange-300 rounded-xl">
                 <div className="flex items-start gap-3">

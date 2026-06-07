@@ -3,7 +3,7 @@ import { useState } from "react";
 const PAYMENT_OPTIONS = [
   { value: "stripe",        label: "Pay by Card",       desc: "Secure online payment via Stripe",       icon: "💳" },
   { value: "cash",          label: "Pay with Cash",     desc: "Pay driver or front desk at pickup",     icon: "💵" },
-  { value: "hotel_account", label: "Charge to Hotel",   desc: "Billed to your hotel account",           icon: "🏨" },
+  { value: "hotel_account", label: "Charge to Account", desc: "Billed to your hotel or house account",  icon: "🏨" },
 ];
 
 export default function CheckoutPage({ orderDetails, onPaymentComplete, onCancel }) {
@@ -12,6 +12,8 @@ export default function CheckoutPage({ orderDetails, onPaymentComplete, onCancel
   const [isProcessing, setIsProcessing]           = useState(false);
   const [error, setError]                         = useState("");
   const [stripeLink, setStripeLink]               = useState(null); // { url, orderNumber }
+
+  const isDirect = orderDetails.customerType === "direct";
 
   const handleConfirm = async () => {
     setIsProcessing(true);
@@ -22,13 +24,15 @@ export default function CheckoutPage({ orderDetails, onPaymentComplete, onCancel
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          firstName:   orderDetails.firstName,
-          lastName:    orderDetails.lastName,
-          roomNumber:  orderDetails.roomNumber,
-          tier:        orderDetails.tier,
+          firstName:     orderDetails.firstName,
+          lastName:      orderDetails.lastName,
+          roomNumber:    orderDetails.roomNumber,
+          pickupAddress: orderDetails.pickupAddress,
+          unitNumber:    orderDetails.unitNumber,
+          tier:          orderDetails.tier,
           paymentMethod,
-          hotelId:     orderDetails.hotelId,
-          clerkUserId: orderDetails.clerkUserId,
+          hotelId:       orderDetails.hotelId,
+          clerkUserId:   orderDetails.clerkUserId,
         }),
       });
 
@@ -136,13 +140,30 @@ export default function CheckoutPage({ orderDetails, onPaymentComplete, onCancel
             </h3>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-washwell-black">Guest:</span>
+                <span className="text-washwell-black">Name:</span>
                 <span className="font-semibold text-washwell-black">{guestName}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-washwell-black">Room:</span>
-                <span className="font-semibold text-washwell-black">{orderDetails.roomNumber}</span>
-              </div>
+              {isDirect ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-washwell-black">Address:</span>
+                    <span className="font-semibold text-washwell-black text-right max-w-[55%]">
+                      {orderDetails.pickupAddress}
+                    </span>
+                  </div>
+                  {orderDetails.unitNumber && (
+                    <div className="flex justify-between">
+                      <span className="text-washwell-black">Unit:</span>
+                      <span className="font-semibold text-washwell-black">{orderDetails.unitNumber}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-washwell-black">Room:</span>
+                  <span className="font-semibold text-washwell-black">{orderDetails.roomNumber}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-washwell-black">Service:</span>
                 <span className="font-semibold text-washwell-black">{orderDetails.tier}</span>
@@ -199,7 +220,7 @@ export default function CheckoutPage({ orderDetails, onPaymentComplete, onCancel
 
           {paymentMethod === "hotel_account" && (
             <div className="mb-4 bg-blue-50 border-2 border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-              🏨 This order will be billed directly to your hotel account.
+              🏨 This order will be billed directly to your account.
             </div>
           )}
 

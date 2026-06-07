@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       Buffer.from(token.split(".")[1], "base64").toString()
     );
 
-    const { role, hotelName, hotelId, roomNumber } = req.body;
+    const { role, customerType, hotelName, hotelId, roomNumber, pickupAddress, unitNumber } = req.body;
     if (!role) return res.status(400).json({ error: "role is required" });
 
     const metadata = { role };
@@ -28,7 +28,15 @@ export default async function handler(req, res) {
     }
 
     if (role === "guest") {
-      if (roomNumber) metadata.roomNumber = roomNumber;
+      metadata.customerType = customerType || "hotel";
+      metadata.hotelId = "the-hotel";
+
+      if (customerType === "direct") {
+        if (pickupAddress) metadata.pickupAddress = pickupAddress;
+        if (unitNumber)    metadata.unitNumber    = unitNumber;
+      } else {
+        if (roomNumber) metadata.roomNumber = roomNumber;
+      }
     }
 
     await clerk.users.updateUserMetadata(userId, { publicMetadata: metadata });

@@ -12,14 +12,17 @@ export default function GuestPortal() {
   const [orderDetails, setOrderDetails] = useState(null);
 
   const guestUser = {
-    id:          user.id,
-    firstName:   user.firstName || "",
-    lastName:    user.lastName  || "",
-    email:       user.primaryEmailAddress?.emailAddress,
-    roomNumber:  user.publicMetadata?.roomNumber  || "",
-    hotelName:   user.publicMetadata?.hotelName   || "Your Hotel",
-    hotelId:     user.publicMetadata?.hotelId     || "the-hotel",
-    clerkUserId: user.id,
+    id:            user.id,
+    firstName:     user.firstName || "",
+    lastName:      user.lastName  || "",
+    email:         user.primaryEmailAddress?.emailAddress,
+    roomNumber:    user.publicMetadata?.roomNumber    || "",
+    hotelName:     user.publicMetadata?.hotelName     || "Washwell Laundry",
+    hotelId:       user.publicMetadata?.hotelId       || "the-hotel",
+    clerkUserId:   user.id,
+    customerType:  user.publicMetadata?.customerType  || "hotel",
+    pickupAddress: user.publicMetadata?.pickupAddress || "",
+    unitNumber:    user.publicMetadata?.unitNumber    || "",
   };
 
   const signOutBtn = (
@@ -38,10 +41,10 @@ export default function GuestPortal() {
       <>
         {signOutBtn}
         <CheckoutPage
-        orderDetails={orderDetails}
-        onPaymentComplete={() => setView("home")}
-        onCancel={() => { setOrderDetails(null); setView("home"); }}
-      />
+          orderDetails={orderDetails}
+          onPaymentComplete={() => setView("home")}
+          onCancel={() => { setOrderDetails(null); setView("home"); }}
+        />
       </>
     );
   }
@@ -50,10 +53,10 @@ export default function GuestPortal() {
     <>
       {signOutBtn}
       <GuestLandingPage
-      user={guestUser}
-      onNavigateToCheckout={(details) => { setOrderDetails(details); setView("checkout"); }}
-      onTrackDelivery={(orderId) => navigate(`/track/${orderId}`)}
-    />
+        user={guestUser}
+        onNavigateToCheckout={(details) => { setOrderDetails(details); setView("checkout"); }}
+        onTrackDelivery={(orderId) => navigate(`/track/${orderId}`)}
+      />
     </>
   );
 }

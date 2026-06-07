@@ -15,11 +15,21 @@ const STATUS_CONFIG = {
 const TOTAL_STEPS = 7;
 
 export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDelivery }) {
+  const isDirect = user.customerType === "direct";
+
   const [selectedTier, setSelectedTier] = useState("Standard Load");
-  const [firstName, setFirstName] = useState(user.firstName || "");
-  const [lastName, setLastName]   = useState(user.lastName  || "");
-  const [roomNumber, setRoomNumber] = useState(user.roomNumber || "");
-  const [activeOrder, setActiveOrder] = useState(null);
+  const [firstName, setFirstName]       = useState(user.firstName || "");
+  const [lastName, setLastName]         = useState(user.lastName  || "");
+
+  // Hotel guests use room number; direct customers use address + unit
+  const [roomNumber, setRoomNumber]     = useState(user.roomNumber || "");
+  const [pickupAddress, setPickupAddress] = useState(user.pickupAddress || "");
+  const [unitNumber, setUnitNumber]     = useState(user.unitNumber || "");
+
+  const [directOrderConfirmed, setDirectOrderConfirmed] = useState(null); // { orderNumber }
+  const [directSubmitting, setDirectSubmitting] = useState(false);
+  const [directError, setDirectError] = useState("");
+  const [activeOrder, setActiveOrder]   = useState(null);
   const [sustainability, setSustainability] = useState({
     totalOrders: 0,
     waterSavedGallons: 0,
@@ -62,18 +72,63 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
     fetchSustainability();
   }, []);
 
+  const canCheckout = isDirect
+    ? firstName.trim() && pickupAddress.trim()
+    : firstName.trim() && roomNumber.trim();
+
+  // Direct customers skip Stripe upfront — order is logged, payment collected after weigh-in
+  const handleDirectPickup = async () => {
+    if (!canCheckout) return;
+    setDirectSubmitting(true);
+    setDirectError("");
+    try {
+      const res = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName:     firstName.trim(),
+          lastName:      lastName.trim(),
+          roomNumber:    unitNumber.trim() || null,
+          pickupAddress: pickupAddress.trim(),
+          unitNumber:    unitNumber.trim() || null,
+          tier:          selectedTier,
+          paymentMethod: "pay_after_weigh",
+          hotelId:       user.hotelId,
+          clerkUserId:   user.clerkUserId,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to place order");
+      }
+      const { orderNumber } = await res.json();
+      setDirectOrderConfirmed({ orderNumber });
+    } catch (err) {
+      setDirectError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setDirectSubmitting(false);
+    }
+  };
+
   const handleRequestPickup = () => {
-    if (!firstName.trim()) return;
+    if (!canCheckout) return;
+    if (isDirect) {
+      handleDirectPickup();
+      return;
+    }
     const tier = PRICING_TIERS[selectedTier];
     onNavigateToCheckout({
       firstName:      firstName.trim(),
       lastName:       lastName.trim(),
       roomNumber:     roomNumber.trim() || user.roomNumber,
+      pickupAddress:  null,
+      unitNumber:     null,
       tier:           selectedTier,
       stripeUrl:      tier.stripeUrl,
       estimatedTotal: tier.price,
       hotelId:        user.hotelId,
       clerkUserId:    user.clerkUserId,
+      customerType:   user.customerType,
     });
   };
 
@@ -93,14 +148,24 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
           <h1 className="text-4xl md:text-5xl font-display font-bold text-washwell-black mb-3 tracking-tight">
             {firstName ? `Welcome back, ${firstName}` : "Welcome to Washwell"}
           </h1>
-          <p className="text-lg text-washwell-gray-dark mb-2 font-medium">
-            {user.hotelName} {roomNumber && <span>&middot; Room {roomNumber}</span>}
-          </p>
+
+          {isDirect ? (
+            <p className="text-lg text-washwell-gray-dark mb-2 font-medium">
+              {pickupAddress
+                ? <span>{pickupAddress}{unitNumber && <span> &middot; Unit {unitNumber}</span>}</span>
+                : "Home Laundry Pickup"}
+            </p>
+          ) : (
+            <p className="text-lg text-washwell-gray-dark mb-2 font-medium">
+              {user.hotelName} {roomNumber && <span>&middot; Room {roomNumber}</span>}
+            </p>
+          )}
+
           <p className="text-sm text-washwell-gray uppercase tracking-widest font-semibold mb-10">
             Washwell Laundry Co.
           </p>
 
-          {/* Name + Room fields */}
+          {/* Name fields */}
           <div className="w-full max-w-lg mx-auto mb-6 grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-washwell-gray uppercase tracking-widest mb-1 text-left">
@@ -126,18 +191,52 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                 className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-medium text-washwell-black bg-white"
               />
             </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-bold text-washwell-gray uppercase tracking-widest mb-1 text-left">
-                Room Number <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={roomNumber}
-                onChange={(e) => setRoomNumber(e.target.value)}
-                placeholder="e.g. 412"
-                className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-medium text-washwell-black bg-white"
-              />
-            </div>
+
+            {/* Hotel guests: room number */}
+            {!isDirect && (
+              <div className="col-span-2">
+                <label className="block text-xs font-bold text-washwell-gray uppercase tracking-widest mb-1 text-left">
+                  Room Number <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={roomNumber}
+                  onChange={(e) => setRoomNumber(e.target.value)}
+                  placeholder="e.g. 412"
+                  className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-medium text-washwell-black bg-white"
+                />
+              </div>
+            )}
+
+            {/* Direct customers: address + unit */}
+            {isDirect && (
+              <>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-washwell-gray uppercase tracking-widest mb-1 text-left">
+                    Pickup Address <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={pickupAddress}
+                    onChange={(e) => setPickupAddress(e.target.value)}
+                    placeholder="123 Main St, New York NY 10001"
+                    className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-medium text-washwell-black bg-white"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-washwell-gray uppercase tracking-widest mb-1 text-left">
+                    Unit / Apt # <span className="text-washwell-gray font-normal normal-case">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={unitNumber}
+                    onChange={(e) => setUnitNumber(e.target.value)}
+                    placeholder="e.g. 4B"
+                    className="w-full px-4 py-3 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-medium text-washwell-black bg-white"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {/* Service Tier Selector */}
@@ -187,17 +286,45 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
             </div>
           </div>
 
-          <button
-            onClick={handleRequestPickup}
-            disabled={!firstName.trim() || !roomNumber.trim()}
-            className="w-full md:w-auto px-16 py-5 bg-washwell-green hover:bg-washwell-green-dark text-white font-display font-bold text-xl rounded-2xl shadow-xl transition-all duration-300 tracking-wide uppercase disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Request Pickup
-          </button>
-
-          <p className="mt-4 text-xs text-washwell-gray uppercase tracking-widest">
-            Secured by Stripe
-          </p>
+          {/* Direct customer: order confirmed inline */}
+          {isDirect && directOrderConfirmed ? (
+            <div className="w-full max-w-lg mx-auto mt-2 p-6 bg-washwell-green-pale border-2 border-washwell-green rounded-2xl text-center">
+              <div className="w-12 h-12 bg-washwell-green rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="font-display font-bold text-washwell-black text-lg mb-1">
+                Pickup Requested — {directOrderConfirmed.orderNumber}
+              </p>
+              <p className="text-sm text-washwell-gray-dark">
+                We'll pick up your laundry and send your payment link once we've weighed it.
+              </p>
+            </div>
+          ) : (
+            <>
+              {isDirect && (
+                <p className="text-xs text-washwell-gray-dark mb-4 max-w-sm mx-auto">
+                  Your price is based on actual weight. Payment link sent after pickup.
+                </p>
+              )}
+              {directError && (
+                <p className="text-sm text-red-500 mb-3">{directError}</p>
+              )}
+              <button
+                onClick={handleRequestPickup}
+                disabled={!canCheckout || directSubmitting}
+                className="w-full md:w-auto px-16 py-5 bg-washwell-green hover:bg-washwell-green-dark text-white font-display font-bold text-xl rounded-2xl shadow-xl transition-all duration-300 tracking-wide uppercase disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {directSubmitting ? "Requesting..." : "Request Pickup"}
+              </button>
+              {!isDirect && (
+                <p className="mt-4 text-xs text-washwell-gray uppercase tracking-widest">
+                  Secured by Stripe
+                </p>
+              )}
+            </>
+          )}
         </div>
       </section>
 
