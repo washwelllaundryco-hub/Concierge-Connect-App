@@ -4,6 +4,7 @@ import { PRICING_TIERS } from "../constants";
 const STATUS_CONFIG = {
   pending:                { label: "Order Received",    step: 1 },
   paid_pending_technician:{ label: "Order Received",    step: 1 },
+  awaiting_payment:       { label: "Awaiting Payment",  step: 2 },
   picked_up:              { label: "Picked Up",          step: 2 },
   in_wash:                { label: "In Wash",            step: 3 },
   drying:                 { label: "Drying",             step: 4 },
@@ -36,6 +37,24 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
     energySavedKwh: 0,
     co2AvoidedLbs: 0,
   });
+
+  // Auto-confirm payment when customer returns from Stripe (?direct_paid=orderId)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const directPaid = params.get("direct_paid");
+    if (directPaid) {
+      fetch("/api/orders/confirm-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: directPaid,
+          paymentConfirmedAt: new Date().toISOString(),
+        }),
+      }).catch(() => {});
+      // Remove the query param from the URL without reloading
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   // Fetch real active order
   useEffect(() => {
@@ -239,52 +258,82 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
             )}
           </div>
 
-          {/* Service Tier Selector */}
-          <div className="w-full max-w-lg mx-auto mb-8 text-left">
-            <p className="text-xs font-bold text-washwell-gray uppercase tracking-widest mb-3 text-center">
-              Select Service
-            </p>
-            <div className="space-y-2">
-              {Object.entries(PRICING_TIERS).map(([name, tier]) => {
-                const isSelected = selectedTier === name;
-                return (
-                  <button
-                    key={name}
-                    onClick={() => setSelectedTier(name)}
-                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 transition-all duration-200 text-left ${
-                      isSelected
-                        ? "bg-washwell-green-pale border-washwell-green shadow-md"
-                        : "bg-white border-washwell-gray-light hover:border-washwell-green/50 hover:bg-washwell-green-pale/40"
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-display font-bold text-sm text-washwell-black">{name}</span>
-                        {tier.recommended && (
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-washwell-green text-white rounded-full">
-                            Popular
-                          </span>
+          {/* Service Tier Selector — hotel guests only */}
+          {!isDirect && (
+            <div className="w-full max-w-lg mx-auto mb-8 text-left">
+              <p className="text-xs font-bold text-washwell-gray uppercase tracking-widest mb-3 text-center">
+                Select Service
+              </p>
+              <div className="space-y-2">
+                {Object.entries(PRICING_TIERS).map(([name, tier]) => {
+                  const isSelected = selectedTier === name;
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => setSelectedTier(name)}
+                      className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 transition-all duration-200 text-left ${
+                        isSelected
+                          ? "bg-washwell-green-pale border-washwell-green shadow-md"
+                          : "bg-white border-washwell-gray-light hover:border-washwell-green/50 hover:bg-washwell-green-pale/40"
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-display font-bold text-sm text-washwell-black">{name}</span>
+                          {tier.recommended && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-washwell-green text-white rounded-full">
+                              Popular
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-washwell-gray-dark truncate">{tier.tagline}</p>
+                      </div>
+                      <span className={`font-display font-bold text-lg flex-shrink-0 ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
+                        ${tier.price}
+                      </span>
+                      <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
+                        isSelected ? "border-washwell-green bg-washwell-green" : "border-washwell-gray-light"
+                      }`}>
+                        {isSelected && (
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
                         )}
                       </div>
-                      <p className="text-xs text-washwell-gray-dark truncate">{tier.tagline}</p>
-                    </div>
-                    <span className={`font-display font-bold text-lg flex-shrink-0 ${isSelected ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
-                      ${tier.price}
-                    </span>
-                    <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
-                      isSelected ? "border-washwell-green bg-washwell-green" : "border-washwell-gray-light"
-                    }`}>
-                      {isSelected && (
-                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Residential: pricing note */}
+          {isDirect && (
+            <div className="w-full max-w-lg mx-auto mb-8 p-4 bg-white rounded-2xl border-2 border-washwell-gray-light text-left">
+              <p className="text-xs font-bold text-washwell-gray uppercase tracking-widest mb-3">Pricing</p>
+              <div className="space-y-1.5 text-sm text-washwell-gray-dark">
+                <div className="flex justify-between">
+                  <span>Regular items</span>
+                  <span className="font-semibold text-washwell-black">$2.75 / lb</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Towels &amp; sheets</span>
+                  <span className="font-semibold text-washwell-black">$3.00 / lb</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Delivery fee</span>
+                  <span className="font-semibold text-washwell-black">$15.00</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tax</span>
+                  <span className="font-semibold text-washwell-black">13%</span>
+                </div>
+              </div>
+              <p className="text-xs text-washwell-gray mt-3">
+                Your exact total is calculated after pickup. A payment link will be sent once your laundry is weighed.
+              </p>
+            </div>
+          )}
 
           {/* Direct customer: order confirmed inline */}
           {isDirect && directOrderConfirmed ? (
@@ -303,11 +352,6 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
             </div>
           ) : (
             <>
-              {isDirect && (
-                <p className="text-xs text-washwell-gray-dark mb-4 max-w-sm mx-auto">
-                  Your price is based on actual weight. Payment link sent after pickup.
-                </p>
-              )}
               {directError && (
                 <p className="text-sm text-red-500 mb-3">{directError}</p>
               )}
@@ -316,7 +360,7 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
                 disabled={!canCheckout || directSubmitting}
                 className="w-full md:w-auto px-16 py-5 bg-washwell-green hover:bg-washwell-green-dark text-white font-display font-bold text-xl rounded-2xl shadow-xl transition-all duration-300 tracking-wide uppercase disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {directSubmitting ? "Requesting..." : "Request Pickup"}
+                {directSubmitting ? "Requesting..." : isDirect ? "Request Pickup" : "Request Pickup"}
               </button>
               {!isDirect && (
                 <p className="mt-4 text-xs text-washwell-gray uppercase tracking-widest">
@@ -342,6 +386,14 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
               <h2 className="text-3xl font-display font-bold text-washwell-black mb-2">
                 Order {activeOrder.orderNumber}
               </h2>
+
+              {/* Awaiting payment nudge for residential */}
+              {activeOrder.status === "awaiting_payment" && (
+                <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-2xl max-w-md mx-auto">
+                  <p className="text-sm font-semibold text-blue-800 mb-1">Payment Link Sent</p>
+                  <p className="text-xs text-blue-700">Check your email for the payment link to complete your order.</p>
+                </div>
+              )}
             </div>
 
             {/* Progress bar */}

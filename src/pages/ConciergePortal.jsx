@@ -6,6 +6,7 @@ import { PRICING_TIERS } from "../constants";
 const STATUS_BADGE = {
   pending:                 { label: "Pending",           color: "bg-washwell-gray-light text-washwell-gray-dark" },
   pending_payment:         { label: "Awaiting Payment",  color: "bg-orange-100 text-orange-800" },
+  awaiting_payment:        { label: "Awaiting Payment",  color: "bg-blue-100 text-blue-800" },
   paid_pending_technician: { label: "Paid — Awaiting",   color: "bg-yellow-100 text-yellow-800" },
   in_wash:                 { label: "In Wash",            color: "bg-blue-100 text-blue-800" },
   drying:                  { label: "Drying",             color: "bg-purple-100 text-purple-800" },
@@ -16,7 +17,7 @@ const STATUS_BADGE = {
 
 const STATUS_STEPS = [
   { key: "paid_pending_technician", label: "Received",   matches: ["pending", "pending_payment", "paid_pending_technician"] },
-  { key: "picked_up",               label: "Picked Up",  matches: ["picked_up"] },
+  { key: "picked_up",               label: "Picked Up",  matches: ["picked_up", "awaiting_payment"] },
   { key: "in_wash",                 label: "In Wash",    matches: ["in_wash"] },
   { key: "drying",                  label: "Drying",     matches: ["drying"] },
   { key: "folding",                 label: "Folding",    matches: ["folding"] },
@@ -173,7 +174,6 @@ export default function ConciergePortal() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ action: "mark_collected" }),
       });
-      // Update local state
       setOrders((prev) =>
         prev.map((o) => o.id === orderId ? { ...o, balanceDue: 0, correctTier: null } : o)
       );

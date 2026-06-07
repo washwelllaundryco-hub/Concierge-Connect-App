@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { PRICING_TIERS, getCorrectTier } from "../constants";
+import { PRICING_TIERS, getCorrectTier, calcDirectTotal } from "../constants";
 
 const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", "out_for_delivery", "completed"];
 
@@ -23,24 +23,35 @@ export default function TechnicianDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [showWeightModal, setShowWeightModal] = useState(false);
-  const [weightInput, setWeightInput] = useState("");
-  const [machineInputs, setMachineInputs] = useState({});
-  const [confirmCancelId, setConfirmCancelId] = useState(null);
+  const [selectedOrder, setSelectedOrder]       = useState(null);
+  const [showWeightModal, setShowWeightModal]    = useState(false);
+  const [weightInput, setWeightInput]            = useState("");
+  const [laundryType, setLaundryType]            = useState("regular"); // residential only
+  const [machineInputs, setMachineInputs]        = useState({});
+  const [confirmCancelId, setConfirmCancelId]    = useState(null);
+  const [paymentLinkResult, setPaymentLinkResult] = useState(null); // { url, breakdown, emailSent, customerEmail }
+  const [generatingLink, setGeneratingLink]      = useState(false);
 
-  // Derived upgrade info for the weight modal (hotel tier customers only)
+  // Hotel tier upgrade info
   const upgradeInfo = (() => {
     if (!selectedOrder || !weightInput) return null;
-    if (selectedOrder.paymentMethod === "pay_after_weigh") return null; // direct customer — no upgrade, price set after weigh
+    if (selectedOrder.paymentMethod === "pay_after_weigh") return null;
     const w = parseFloat(weightInput);
     if (!w || w <= 0) return null;
-    const paidTier    = selectedOrder.tier || "Essential Load";
-    const correctTier = getCorrectTier(w);
-    const paidPrice   = parseFloat(PRICING_TIERS[paidTier]?.price  || 0);
-    const newPrice    = parseFloat(PRICING_TIERS[correctTier]?.price || 0);
+    const paidTier  = selectedOrder.tier || "Essential Load";
+    const correct   = getCorrectTier(w);
+    const paidPrice = parseFloat(PRICING_TIERS[paidTier]?.price || 0);
+    const newPrice  = parseFloat(PRICING_TIERS[correct]?.price  || 0);
     if (newPrice <= paidPrice) return null;
-    return { paidTier, correctTier, balanceDue: (newPrice - paidPrice).toFixed(2) };
+    return { paidTier, correctTier: correct, balanceDue: (newPrice - paidPrice).toFixed(2) };
+  })();
+
+  // Residential price preview
+  const directPreview = (() => {
+    if (!selectedOrder || selectedOrder.paymentMethod !== "pay_after_weigh") return null;
+    const w = parseFloat(weightInput);
+    if (!w || w <= 0) return null;
+    return calcDirectTotal(w, laundryType);
   })();
 
   const handleStatusUpdate = async (orderId, newStatus, weight = null, upgrade = null) => {
@@ -55,7 +66,6 @@ export default function TechnicianDashboard() {
         )
       );
     }
-
     await fetch(`/api/orders/${orderId}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -66,13 +76,43 @@ export default function TechnicianDashboard() {
         correctTier: upgrade?.correctTier ?? null,
       }),
     }).catch(() => {});
-
     if (newStatus === "completed") {
-      await fetch(`/api/sustainability/sync`, {
+      await fetch("/api/sustainability/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId }),
       }).catch(() => {});
+    }
+  };
+
+  const handleGeneratePaymentLink = async () => {
+    const w = parseFloat(weightInput);
+    if (!w || w <= 0 || !selectedOrder) return;
+    setGeneratingLink(true);
+    try {
+      const res = await fetch(`/api/orders/${selectedOrder.id}/payment-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weight: w, laundryType }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setPaymentLinkResult(data);
+      // Update local order status to awaiting_payment
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === selectedOrder.id
+            ? { ...o, status: "awaiting_payment", totalWeightLbs: w }
+            : o
+        )
+      );
+      setShowWeightModal(false);
+      setWeightInput("");
+      setLaundryType("regular");
+    } catch (err) {
+      alert("Error generating payment link: " + err.message);
+    } finally {
+      setGeneratingLink(false);
     }
   };
 
@@ -86,7 +126,7 @@ export default function TechnicianDashboard() {
           : o
       )
     );
-    await fetch(`/api/orders/machine`, {
+    await fetch("/api/orders/machine", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, machineType, machineNumber: num }),
@@ -144,12 +184,15 @@ export default function TechnicianDashboard() {
         <div className="grid md:grid-cols-2 gap-6">
           {orders.map((order) => {
             const isDirect = !!order.pickupAddress;
+            const isAwaiting = order.status === "awaiting_payment";
             return (
               <div
                 key={order.id}
-                className="bg-white rounded-3xl shadow-lg border-2 border-washwell-gray-light p-6 hover:shadow-xl transition-all"
+                className={`bg-white rounded-3xl shadow-lg border-2 p-6 hover:shadow-xl transition-all ${
+                  isAwaiting ? "border-blue-300" : "border-washwell-gray-light"
+                }`}
               >
-                {/* Order header */}
+                {/* Header */}
                 <div className="flex items-start justify-between mb-6">
                   <div>
                     <div className="inline-flex items-center gap-2 mb-3">
@@ -158,7 +201,7 @@ export default function TechnicianDashboard() {
                       </span>
                       {isDirect && (
                         <span className="px-2 py-1 bg-blue-100 border border-blue-300 rounded-full text-xs font-bold text-blue-700 uppercase tracking-wide">
-                          Direct
+                          Residential
                         </span>
                       )}
                     </div>
@@ -176,26 +219,27 @@ export default function TechnicianDashboard() {
                       <p className="text-sm text-washwell-gray-dark">Room {order.roomNumber}</p>
                     )}
                   </div>
-                  {order.paymentVerified && (
-                    <div className="px-4 py-2 bg-washwell-green rounded-xl border-2 border-washwell-green-dark flex items-center gap-2 shadow-lg">
-                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  {order.paymentVerified ? (
+                    <div className="px-3 py-2 bg-washwell-green rounded-xl border-2 border-washwell-green-dark flex items-center gap-2">
+                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
                       <span className="text-white text-xs font-bold uppercase tracking-wider">Paid</span>
                     </div>
-                  )}
-                  {isDirect && !order.paymentVerified && (
-                    <div className="px-4 py-2 bg-yellow-100 rounded-xl border-2 border-yellow-300 flex items-center gap-2">
-                      <span className="text-yellow-800 text-xs font-bold uppercase tracking-wider">Pay After Weigh</span>
+                  ) : isAwaiting ? (
+                    <div className="px-3 py-2 bg-blue-50 rounded-xl border-2 border-blue-200">
+                      <span className="text-blue-700 text-xs font-bold uppercase tracking-wider">Awaiting Payment</span>
                     </div>
-                  )}
+                  ) : isDirect ? (
+                    <div className="px-3 py-2 bg-yellow-50 rounded-xl border-2 border-yellow-200">
+                      <span className="text-yellow-700 text-xs font-bold uppercase tracking-wider">Weigh First</span>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Status */}
                 <div className="mb-4 p-4 bg-washwell-cream rounded-xl border-2 border-washwell-gray-light">
-                  <div className="text-xs text-washwell-gray uppercase tracking-wider font-semibold mb-1">
-                    Current Status
-                  </div>
+                  <div className="text-xs text-washwell-gray uppercase tracking-wider font-semibold mb-1">Status</div>
                   <div className="text-lg font-display font-bold text-washwell-black capitalize">
                     {order.status.replace(/_/g, " ")}
                   </div>
@@ -210,65 +254,45 @@ export default function TechnicianDashboard() {
                   </div>
                 )}
 
-                {/* Machine number inputs */}
+                {/* Awaiting payment — show resend link button */}
+                {isAwaiting && (
+                  <button
+                    onClick={() => setPaymentLinkResult({ url: null, resend: order.id })}
+                    className="w-full mb-3 py-2 border-2 border-blue-300 text-blue-700 font-semibold rounded-xl hover:bg-blue-50 transition-colors text-sm"
+                  >
+                    View Payment Link
+                  </button>
+                )}
+
+                {/* Machine inputs */}
                 {(order.status === "in_wash" || order.status === "drying" || order.status === "folding") && (
                   <div className="mb-4 grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
-                        Washer #
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          min="1"
-                          placeholder="—"
-                          defaultValue={order.washerNumber || ""}
-                          onChange={(e) =>
-                            setMachineInputs((p) => ({ ...p, [`${order.id}_washer`]: e.target.value }))
-                          }
-                          className="w-full px-3 py-2 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-display font-bold text-washwell-black text-center"
-                        />
-                        <button
-                          onClick={() =>
-                            handleMachineAssign(order.id, "washer", machineInputs[`${order.id}_washer`] || order.washerNumber)
-                          }
-                          className="px-3 py-2 bg-washwell-green text-white rounded-xl font-bold text-sm hover:bg-washwell-green-dark transition-all"
-                        >
-                          Set
-                        </button>
-                      </div>
-                      {order.washerNumber && (
-                        <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{order.washerNumber}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
-                        Dryer #
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          min="1"
-                          placeholder="—"
-                          defaultValue={order.dryerNumber || ""}
-                          onChange={(e) =>
-                            setMachineInputs((p) => ({ ...p, [`${order.id}_dryer`]: e.target.value }))
-                          }
-                          className="w-full px-3 py-2 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-display font-bold text-washwell-black text-center"
-                        />
-                        <button
-                          onClick={() =>
-                            handleMachineAssign(order.id, "dryer", machineInputs[`${order.id}_dryer`] || order.dryerNumber)
-                          }
-                          className="px-3 py-2 bg-washwell-green text-white rounded-xl font-bold text-sm hover:bg-washwell-green-dark transition-all"
-                        >
-                          Set
-                        </button>
-                      </div>
-                      {order.dryerNumber && (
-                        <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{order.dryerNumber}</p>
-                      )}
-                    </div>
+                    {["washer", "dryer"].map((type) => {
+                      const key = `${order.id}_${type}`;
+                      const saved = type === "washer" ? order.washerNumber : order.dryerNumber;
+                      return (
+                        <div key={type}>
+                          <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-1">
+                            {type === "washer" ? "Washer" : "Dryer"} #
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="number" min="1" placeholder="—"
+                              defaultValue={saved || ""}
+                              onChange={(e) => setMachineInputs((p) => ({ ...p, [key]: e.target.value }))}
+                              className="w-full px-3 py-2 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green outline-none font-display font-bold text-washwell-black text-center"
+                            />
+                            <button
+                              onClick={() => handleMachineAssign(order.id, type, machineInputs[key] || saved)}
+                              className="px-3 py-2 bg-washwell-green text-white rounded-xl font-bold text-sm hover:bg-washwell-green-dark transition-all"
+                            >
+                              Set
+                            </button>
+                          </div>
+                          {saved && <p className="text-xs text-washwell-green font-semibold mt-1">Assigned: #{saved}</p>}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -289,7 +313,7 @@ export default function TechnicianDashboard() {
                   </button>
                 )}
 
-                {/* Cancel button */}
+                {/* Cancel */}
                 <div className="mt-3 text-center">
                   <button
                     onClick={() => setConfirmCancelId(order.id)}
@@ -312,92 +336,213 @@ export default function TechnicianDashboard() {
             <p className="text-sm text-washwell-gray-dark mb-5">Order {selectedOrder.orderNumber}</p>
 
             {selectedOrder.paymentMethod === "pay_after_weigh" ? (
-              <div className="mb-5 px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl text-sm text-blue-800">
-                <p className="font-bold mb-1">Direct Customer — Pay After Weigh</p>
-                <p>Enter the weight to calculate price. A Stripe payment link will be sent after confirming.</p>
-              </div>
+              <>
+                {/* Residential: laundry type selector */}
+                <div className="mb-5">
+                  <label className="block text-xs font-bold text-washwell-gray-dark uppercase tracking-wider mb-3">
+                    Laundry Type
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { value: "regular", label: "Regular",      sub: "$2.75 / lb" },
+                      { value: "mixed",   label: "Towels/Sheets", sub: "$3.00 / lb" },
+                    ].map(({ value, label, sub }) => (
+                      <button
+                        key={value}
+                        onClick={() => setLaundryType(value)}
+                        className={`px-4 py-3 rounded-xl border-2 text-left transition-all ${
+                          laundryType === value
+                            ? "bg-washwell-green-pale border-washwell-green"
+                            : "bg-washwell-cream border-washwell-gray-light hover:border-washwell-green/50"
+                        }`}
+                      >
+                        <p className="font-bold text-sm text-washwell-black">{label}</p>
+                        <p className={`text-xs font-semibold ${laundryType === value ? "text-washwell-green" : "text-washwell-gray-dark"}`}>
+                          {sub}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <input
+                  type="number" step="0.1" min="0.1" placeholder="0.0"
+                  value={weightInput}
+                  onChange={(e) => setWeightInput(e.target.value)}
+                  autoFocus
+                  className="w-full px-5 py-4 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all text-2xl font-display font-bold text-washwell-black mb-4"
+                />
+
+                {/* Live price breakdown */}
+                {directPreview && (
+                  <div className="mb-5 p-4 bg-washwell-cream rounded-xl border-2 border-washwell-gray-light text-sm space-y-2">
+                    <div className="flex justify-between text-washwell-gray-dark">
+                      <span>Laundry ({parseFloat(weightInput)} lbs × ${directPreview.rate})</span>
+                      <span className="font-semibold text-washwell-black">${directPreview.laundry.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-washwell-gray-dark">
+                      <span>Delivery</span>
+                      <span className="font-semibold text-washwell-black">${directPreview.delivery.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-washwell-gray-dark">
+                      <span>Tax (13%)</span>
+                      <span className="font-semibold text-washwell-black">${directPreview.tax.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between border-t-2 border-washwell-gray-light pt-2">
+                      <span className="font-bold text-washwell-black">Total</span>
+                      <span className="font-display font-bold text-washwell-green text-lg">${directPreview.total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setShowWeightModal(false); setSelectedOrder(null); setWeightInput(""); setLaundryType("regular"); }}
+                    className="flex-1 px-6 py-3 border-2 border-washwell-gray-light text-washwell-black font-semibold rounded-xl hover:bg-washwell-cream transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleGeneratePaymentLink}
+                    disabled={!weightInput || parseFloat(weightInput) <= 0 || generatingLink}
+                    className="flex-1 px-6 py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {generatingLink ? "Generating Link..." : "Confirm Weight"}
+                  </button>
+                </div>
+              </>
             ) : (
-              <p className="text-xs text-washwell-gray mb-5">
-                Paid tier: <span className="font-bold text-washwell-black">{selectedOrder.tier}</span>
-                {" · max "}
-                <span className="font-bold text-washwell-black">
-                  {selectedOrder.tier === "Bulk Service" ? "100" :
-                   selectedOrder.tier === "Executive Load" ? "75" :
-                   selectedOrder.tier === "Premium Load" ? "50" :
-                   selectedOrder.tier === "Standard Load" ? "30" : "15"} lbs
-                </span>
-              </p>
-            )}
+              <>
+                {/* Hotel customer weight modal */}
+                <p className="text-xs text-washwell-gray mb-5">
+                  Paid tier: <span className="font-bold text-washwell-black">{selectedOrder.tier}</span>
+                  {" · max "}
+                  <span className="font-bold text-washwell-black">
+                    {selectedOrder.tier === "Bulk Service" ? "100" :
+                     selectedOrder.tier === "Executive Load" ? "75" :
+                     selectedOrder.tier === "Premium Load" ? "50" :
+                     selectedOrder.tier === "Standard Load" ? "30" : "15"} lbs
+                  </span>
+                </p>
 
-            <input
-              type="number"
-              step="0.1"
-              min="0.1"
-              placeholder="0.0"
-              value={weightInput}
-              onChange={(e) => setWeightInput(e.target.value)}
-              autoFocus
-              className="w-full px-5 py-4 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all text-2xl font-display font-bold text-washwell-black mb-4"
-            />
+                <input
+                  type="number" step="0.1" min="0.1" placeholder="0.0"
+                  value={weightInput}
+                  onChange={(e) => setWeightInput(e.target.value)}
+                  autoFocus
+                  className="w-full px-5 py-4 border-2 border-washwell-gray-light rounded-xl focus:border-washwell-green focus:ring-4 focus:ring-washwell-green/10 outline-none transition-all text-2xl font-display font-bold text-washwell-black mb-4"
+                />
 
-            {/* Upgrade warning (hotel customers only) */}
-            {upgradeInfo && (
-              <div className="mb-5 px-4 py-4 bg-orange-50 border-2 border-orange-300 rounded-xl">
-                <div className="flex items-start gap-3">
-                  <svg className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  <div>
+                {upgradeInfo && (
+                  <div className="mb-5 px-4 py-4 bg-orange-50 border-2 border-orange-300 rounded-xl">
                     <p className="font-bold text-orange-800 text-sm">Tier Upgrade Required</p>
                     <p className="text-orange-700 text-xs mt-1">
-                      This load exceeds <strong>{upgradeInfo.paidTier}</strong> limits.
-                      Correct tier: <strong>{upgradeInfo.correctTier}</strong>.
+                      Exceeds <strong>{upgradeInfo.paidTier}</strong> · Correct tier: <strong>{upgradeInfo.correctTier}</strong>
                     </p>
-                    <p className="text-orange-800 font-bold text-sm mt-2">
-                      Balance due from guest: ${upgradeInfo.balanceDue}
-                    </p>
-                    <p className="text-orange-600 text-xs mt-1">
-                      Concierge will be notified to collect payment.
-                    </p>
+                    <p className="text-orange-800 font-bold text-sm mt-2">Balance due: ${upgradeInfo.balanceDue}</p>
+                    <p className="text-orange-600 text-xs mt-1">Concierge will be notified to collect payment.</p>
                   </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setShowWeightModal(false); setSelectedOrder(null); setWeightInput(""); }}
+                    className="flex-1 px-6 py-3 border-2 border-washwell-gray-light text-washwell-black font-semibold rounded-xl hover:bg-washwell-cream transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      const w = parseFloat(weightInput);
+                      if (w > 0) {
+                        handleStatusUpdate(selectedOrder.id, "in_wash", w,
+                          upgradeInfo ? { balanceDue: upgradeInfo.balanceDue, correctTier: upgradeInfo.correctTier } : null
+                        );
+                        setShowWeightModal(false);
+                        setSelectedOrder(null);
+                        setWeightInput("");
+                      }
+                    }}
+                    disabled={!weightInput || parseFloat(weightInput) <= 0}
+                    className={`flex-1 px-6 py-3 text-white font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                      upgradeInfo ? "bg-orange-500 hover:bg-orange-600" : "bg-washwell-green hover:bg-washwell-green-dark"
+                    }`}
+                  >
+                    {upgradeInfo ? `Confirm + Flag $${upgradeInfo.balanceDue}` : "Confirm"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Payment Link Result Modal */}
+      {paymentLinkResult && (
+        <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-washwell-green">
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 bg-washwell-green rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-display font-bold text-washwell-black mb-1">Payment Link Ready</h3>
+              {paymentLinkResult.emailSent && paymentLinkResult.customerEmail && (
+                <p className="text-sm text-washwell-green font-semibold">
+                  Emailed to {paymentLinkResult.customerEmail}
+                </p>
+              )}
+              {!paymentLinkResult.emailSent && (
+                <p className="text-sm text-washwell-gray-dark">Share this link with the customer</p>
+              )}
+            </div>
+
+            {paymentLinkResult.breakdown && (
+              <div className="mb-5 p-4 bg-washwell-cream rounded-xl border-2 border-washwell-gray-light text-sm space-y-2">
+                <div className="flex justify-between text-washwell-gray-dark">
+                  <span>Laundry ({paymentLinkResult.breakdown.lbs} lbs)</span>
+                  <span className="font-semibold">${paymentLinkResult.breakdown.laundry.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-washwell-gray-dark">
+                  <span>Delivery</span>
+                  <span className="font-semibold">${paymentLinkResult.breakdown.delivery.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-washwell-gray-dark">
+                  <span>Tax (13%)</span>
+                  <span className="font-semibold">${paymentLinkResult.breakdown.tax.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between border-t-2 border-washwell-gray-light pt-2">
+                  <span className="font-bold text-washwell-black">Total</span>
+                  <span className="font-display font-bold text-washwell-green text-lg">
+                    ${paymentLinkResult.breakdown.total.toFixed(2)}
+                  </span>
                 </div>
               </div>
             )}
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setShowWeightModal(false); setSelectedOrder(null); setWeightInput(""); }}
-                className="flex-1 px-6 py-3 border-2 border-washwell-gray-light text-washwell-black font-semibold rounded-xl hover:bg-washwell-cream transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  const w = parseFloat(weightInput);
-                  if (w > 0) {
-                    handleStatusUpdate(
-                      selectedOrder.id,
-                      "in_wash",
-                      w,
-                      upgradeInfo
-                        ? { balanceDue: upgradeInfo.balanceDue, correctTier: upgradeInfo.correctTier }
-                        : null
-                    );
-                    setShowWeightModal(false);
-                    setSelectedOrder(null);
-                    setWeightInput("");
-                  }
-                }}
-                disabled={!weightInput || parseFloat(weightInput) <= 0}
-                className={`flex-1 px-6 py-3 text-white font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                  upgradeInfo
-                    ? "bg-orange-500 hover:bg-orange-600"
-                    : "bg-washwell-green hover:bg-washwell-green-dark"
-                }`}
-              >
-                {upgradeInfo ? `Confirm + Flag $${upgradeInfo.balanceDue}` : "Confirm"}
-              </button>
-            </div>
+            {paymentLinkResult.url && (
+              <div className="flex gap-2 mb-5">
+                <input
+                  readOnly
+                  value={paymentLinkResult.url}
+                  className="flex-1 px-3 py-2 border-2 border-washwell-gray-light rounded-xl text-xs text-washwell-gray-dark bg-washwell-cream font-mono overflow-hidden"
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(paymentLinkResult.url)}
+                  className="px-4 py-2 bg-washwell-black text-white font-bold text-sm rounded-xl hover:opacity-90 transition-all"
+                >
+                  Copy
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setPaymentLinkResult(null)}
+              className="w-full py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl transition-all"
+            >
+              Done
+            </button>
           </div>
         </div>
       )}
@@ -406,18 +551,10 @@ export default function TechnicianDashboard() {
       {confirmCancelId && cancelOrder && (
         <div className="fixed inset-0 bg-washwell-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-red-200">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-display font-bold text-washwell-black">Cancel Order?</h3>
-            </div>
+            <h3 className="text-xl font-display font-bold text-washwell-black mb-3">Cancel Order?</h3>
             <p className="text-washwell-gray-dark mb-2">
-              You're about to cancel order{" "}
-              <span className="font-bold text-washwell-black">{cancelOrder.orderNumber}</span> for{" "}
-              <span className="font-bold text-washwell-black">{cancelOrder.guestName}</span>.
+              Cancel order <span className="font-bold text-washwell-black">{cancelOrder.orderNumber}</span> for{" "}
+              <span className="font-bold text-washwell-black">{cancelOrder.guestName}</span>?
             </p>
             <p className="text-sm text-red-500 font-semibold mb-8">This cannot be undone.</p>
             <div className="flex gap-3">
@@ -428,10 +565,7 @@ export default function TechnicianDashboard() {
                 Go Back
               </button>
               <button
-                onClick={() => {
-                  handleStatusUpdate(confirmCancelId, "cancelled");
-                  setConfirmCancelId(null);
-                }}
+                onClick={() => { handleStatusUpdate(confirmCancelId, "cancelled"); setConfirmCancelId(null); }}
                 className="flex-1 px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-lg transition-all"
               >
                 Cancel Order

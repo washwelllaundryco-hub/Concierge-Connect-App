@@ -8,17 +8,17 @@ export default async function handler(req, res) {
   const { orderId } = req.query;
   const { status, weight, balanceDue, correctTier } = req.body;
 
-  const VALID = ["in_wash", "drying", "folding", "bagged", "out_for_delivery", "completed", "cancelled"];
+  const VALID = [
+    "in_wash", "drying", "folding", "bagged",
+    "out_for_delivery", "completed", "cancelled", "awaiting_payment",
+  ];
   if (!VALID.includes(status)) {
     return res.status(400).json({ error: "Invalid status" });
   }
 
   try {
-    const prev = await sql`
-      SELECT status FROM laundry_orders WHERE id = ${orderId}
-    `;
+    const prev = await sql`SELECT status FROM laundry_orders WHERE id = ${orderId}`;
     if (!prev.rows.length) return res.status(404).json({ error: "Order not found" });
-
     const fromStatus = prev.rows[0].status;
 
     if (weight) {
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       `;
     }
 
-    // Store balance due when technician flags a tier overage
+    // Hotel tier overage — store balance due
     if (balanceDue && parseFloat(balanceDue) > 0 && correctTier) {
       await sql`
         UPDATE laundry_orders
