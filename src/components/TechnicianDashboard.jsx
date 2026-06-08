@@ -116,6 +116,7 @@ export default function TechnicianDashboard() {
     }
   };
 
+  // Machine assignment now uses the merged /status endpoint
   const handleMachineAssign = async (orderId, machineType, machineNumber) => {
     const num = parseInt(machineNumber);
     if (!num || num <= 0) return;
@@ -126,10 +127,10 @@ export default function TechnicianDashboard() {
           : o
       )
     );
-    await fetch("/api/orders/machine", {
+    await fetch(`/api/orders/${orderId}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, machineType, machineNumber: num }),
+      body: JSON.stringify({ machineType, machineNumber: num }),
     }).catch(() => {});
   };
 
