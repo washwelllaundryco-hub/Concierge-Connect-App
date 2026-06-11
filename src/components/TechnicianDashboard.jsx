@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { PRICING_TIERS, getCorrectTier, calcDirectTotal } from "../constants";
 import { copyWithFeedback } from "../lib/clipboard.js";
 
@@ -31,6 +31,7 @@ export default function TechnicianDashboard() {
   const [machineInputs, setMachineInputs]        = useState({});
   const [confirmCancelId, setConfirmCancelId]    = useState(null);
   const [paymentLinkResult, setPaymentLinkResult] = useState(null); // { url, breakdown, emailSent, customerEmail }
+  const paymentLinkInputRef = useRef(null);
   const [generatingLink, setGeneratingLink]      = useState(false);
 
   // Hotel tier upgrade info
@@ -114,6 +115,33 @@ export default function TechnicianDashboard() {
       alert("Error generating payment link: " + err.message);
     } finally {
       setGeneratingLink(false);
+    }
+  };
+
+  // Re-show the payment link for an order that's already awaiting payment.
+  // The link was already generated + cached server-side (balance_stripe_url),
+  // so we just need to fetch it back -- pass the order's recorded weight so
+  // the payment-link endpoint's validation passes; since balance_stripe_url
+  // already exists it returns the cached URL without recreating the Stripe session.
+  const handleViewPaymentLink = async (order) => {
+    setPaymentLinkResult({ url: null, loading: true });
+    try {
+      const res = await fetch(`/api/orders/${order.id}/payment-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weight: order.totalWeightLbs || 1, laundryType: "regular" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setPaymentLinkResult({
+        url: data.url,
+        breakdown: data.breakdown ?? null,
+        emailSent: false,
+        customerEmail: null,
+      });
+    } catch (err) {
+      alert("Error retrieving payment link: " + err.message);
+      setPaymentLinkResult(null);
     }
   };
 
@@ -259,7 +287,7 @@ export default function TechnicianDashboard() {
                 {/* Awaiting payment — show resend link button */}
                 {isAwaiting && (
                   <button
-                    onClick={() => setPaymentLinkResult({ url: null, resend: order.id })}
+                    onClick={() => handleViewPaymentLink(order)}
                     className="w-full mb-3 py-2 border-2 border-blue-300 text-blue-700 font-semibold rounded-xl hover:bg-blue-50 transition-colors text-sm"
                   >
                     View Payment Link
@@ -523,20 +551,39 @@ export default function TechnicianDashboard() {
               </div>
             )}
 
+            {paymentLinkResult.loading && (
+              <div className="mb-5 text-center text-sm text-washwell-gray-dark">
+                Loading payment link…
+              </div>
+            )}
+
             {paymentLinkResult.url && (
               <div className="flex gap-2 mb-5">
                 <input
+                  ref={paymentLinkInputRef}
                   readOnly
                   value={paymentLinkResult.url}
+                  onFocus={(e) => e.target.select()}
                   className="flex-1 px-3 py-2 border-2 border-washwell-gray-light rounded-xl text-xs text-washwell-gray-dark bg-washwell-cream font-mono overflow-hidden"
                 />
                 <button
-                  onClick={(e) => copyWithFeedback(e, paymentLinkResult.url)}
+                  onClick={(e) => copyWithFeedback(e, paymentLinkResult.url, paymentLinkInputRef.current)}
                   className="px-4 py-2 bg-washwell-black text-white font-bold text-sm rounded-xl hover:opacity-90 transition-all"
                 >
                   Copy
                 </button>
               </div>
+            )}
+
+            {paymentLinkResult.url && (
+              <a
+                href={paymentLinkResult.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full mb-5 -mt-3 text-center text-xs text-washwell-gray hover:text-washwell-black underline underline-offset-2 transition-colors"
+              >
+                Open link in new tab
+              </a>
             )}
 
             <button
