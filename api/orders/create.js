@@ -25,6 +25,7 @@ export default async function handler(req, res) {
 
   try {
     let resolvedGuestId = guestId;
+    let resolvedUserId = null;
     let guestData = null;
 
     if (!resolvedGuestId && clerkUserId) {
@@ -41,6 +42,7 @@ export default async function handler(req, res) {
         RETURNING id
       `;
       const userId = userResult.rows[0].id;
+      resolvedUserId = userId;
 
       const hotelResult = await sql`SELECT id, name FROM hotels WHERE id = ${effectiveHotelId} LIMIT 1`;
       const hotel = hotelResult.rows[0] || { id: effectiveHotelId, name: "Washwell Laundry" };
@@ -110,7 +112,7 @@ export default async function handler(req, res) {
          tier, payment_method, payment_verified, status, special_instructions, created_at)
       VALUES
         (${orderNumber}, ${resolvedGuestId}, ${guestData.hotel_id},
-         ${placedByUserId ? "concierge" : "guest"}, ${placedByUserId || clerkUserId || null},
+         ${placedByUserId ? "concierge" : "guest"}, ${placedByUserId || resolvedUserId || null},
          ${effectiveTier}, ${paymentMethod || "stripe"}, ${autoApproved}, ${initialStatus},
          ${specialInstructions || null}, NOW())
       RETURNING id, order_number
