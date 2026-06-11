@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { PRICING_TIERS } from "../constants";
+import { copyWithFeedback } from "../lib/clipboard.js";
 
 const STATUS_CONFIG = {
   pending:                { label: "Order Received",    step: 1 },
@@ -390,8 +391,38 @@ export default function GuestLandingPage({ user, onNavigateToCheckout, onTrackDe
               {/* Awaiting payment nudge for residential */}
               {activeOrder.status === "awaiting_payment" && (
                 <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-2xl max-w-md mx-auto">
-                  <p className="text-sm font-semibold text-blue-800 mb-1">Payment Link Sent</p>
-                  <p className="text-xs text-blue-700">Check your email for the payment link to complete your order.</p>
+                  <p className="text-sm font-semibold text-blue-800 mb-1">Payment Link Ready</p>
+                  {activeOrder.paymentLinkUrl ? (
+                    <>
+                      <p className="text-xs text-blue-700 mb-3">
+                        Your laundry has been weighed. Complete payment to start processing.
+                      </p>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          readOnly
+                          value={activeOrder.paymentLinkUrl}
+                          onFocus={(e) => e.target.select()}
+                          className="flex-1 px-3 py-2 border-2 border-blue-200 rounded-xl text-xs text-blue-900 bg-white font-mono overflow-hidden"
+                        />
+                        <button
+                          onClick={(e) => copyWithFeedback(e, activeOrder.paymentLinkUrl)}
+                          className="px-4 py-2 bg-washwell-black text-white font-bold text-xs rounded-xl hover:opacity-90 transition-all whitespace-nowrap"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <a
+                        href={activeOrder.paymentLinkUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full py-2.5 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold text-sm rounded-xl shadow-lg transition-all text-center"
+                      >
+                        Pay Now →
+                      </a>
+                    </>
+                  ) : (
+                    <p className="text-xs text-blue-700">Check your email for the payment link to complete your order.</p>
+                  )}
                 </div>
               )}
             </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { PRICING_TIERS, getCorrectTier, calcDirectTotal } from "../constants";
+import { copyWithFeedback } from "../lib/clipboard.js";
 
 const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", "out_for_delivery", "completed"];
 
@@ -530,7 +531,7 @@ export default function TechnicianDashboard() {
                   className="flex-1 px-3 py-2 border-2 border-washwell-gray-light rounded-xl text-xs text-washwell-gray-dark bg-washwell-cream font-mono overflow-hidden"
                 />
                 <button
-                  onClick={() => navigator.clipboard.writeText(paymentLinkResult.url)}
+                  onClick={(e) => copyWithFeedback(e, paymentLinkResult.url)}
                   className="px-4 py-2 bg-washwell-black text-white font-bold text-sm rounded-xl hover:opacity-90 transition-all"
                 >
                   Copy

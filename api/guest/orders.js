@@ -17,6 +17,7 @@ export default async function handler(req, res) {
         lo.tier,
         lo.total_amount  AS "totalAmount",
         lo.payment_verified AS "paymentVerified",
+        lo.balance_stripe_url AS "paymentLinkUrl",
         lo.created_at    AS "createdAt",
         lo.updated_at    AS "updatedAt"
       FROM laundry_orders lo

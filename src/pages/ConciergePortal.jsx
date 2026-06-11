@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useUser, useAuth, useClerk } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
 import { PRICING_TIERS } from "../constants";
+import { copyWithFeedback } from "../lib/clipboard.js";
 
 const STATUS_BADGE = {
   pending:                 { label: "Pending",           color: "bg-washwell-gray-light text-washwell-gray-dark" },
@@ -513,7 +514,7 @@ export default function ConciergePortal() {
                     </div>
                     <div className="flex gap-3 mb-4">
                       <button
-                        onClick={() => { navigator.clipboard.writeText(upgradeModal.url); }}
+                        onClick={(e) => copyWithFeedback(e, upgradeModal.url)}
                         className="flex-1 py-3 border-2 border-orange-400 text-orange-600 font-bold rounded-xl hover:bg-orange-50 transition-colors text-sm"
                       >
                         Copy Link
@@ -565,7 +566,7 @@ export default function ConciergePortal() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => { navigator.clipboard.writeText(stripeLink.url); }}
+                onClick={(e) => copyWithFeedback(e, stripeLink.url)}
                 className="flex-1 py-3 border-2 border-washwell-green text-washwell-green font-bold rounded-xl hover:bg-washwell-green-pale transition-colors"
               >
                 Copy Link
@@ -574,7 +575,6 @@ export default function ConciergePortal() {
                 href={stripeLink.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => setStripeLink(null)}
                 className="flex-1 py-3 bg-washwell-green hover:bg-washwell-green-dark text-white font-bold rounded-xl shadow-lg transition-all text-center"
               >
                 Open →
