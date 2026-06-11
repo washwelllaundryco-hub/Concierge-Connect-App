@@ -28,7 +28,8 @@ export default async function handler(req, res) {
     let guestData = null;
 
     if (!resolvedGuestId && clerkUserId) {
-      const effectiveHotelId = hotelId || "a0daca51-acb7-4cbb-ac3d-6036b89f8f20";
+      const isValidUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s || "");
+      const effectiveHotelId = isValidUUID(hotelId) ? hotelId : "a0daca51-acb7-4cbb-ac3d-6036b89f8f20";
 
       const userResult = await sql`
         INSERT INTO users (clerk_user_id, first_name, last_name)
