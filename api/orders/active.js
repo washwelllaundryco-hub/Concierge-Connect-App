@@ -26,6 +26,7 @@ export default async function handler(req, res) {
         lo.washer_machine_number  AS "washerNumber",
         lo.dryer_machine_number   AS "dryerNumber",
         lo.payment_verified       AS "paymentVerified",
+        lo.balance_stripe_url     AS "balanceStripeUrl",
         lo.special_instructions   AS "specialInstructions",
         lo.created_at             AS "createdAt",
         u.first_name || COALESCE(' ' || u.last_name, '') AS "guestName",

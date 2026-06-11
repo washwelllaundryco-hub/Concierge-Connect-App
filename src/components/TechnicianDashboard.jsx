@@ -32,6 +32,7 @@ export default function TechnicianDashboard() {
   const [confirmCancelId, setConfirmCancelId]    = useState(null);
   const [paymentLinkResult, setPaymentLinkResult] = useState(null); // { url, breakdown, emailSent, customerEmail }
   const paymentLinkInputRef = useRef(null);
+  const linkInputRefs = useRef({});
   const [generatingLink, setGeneratingLink]      = useState(false);
 
   // Hotel tier upgrade info
@@ -124,7 +125,6 @@ export default function TechnicianDashboard() {
   // the payment-link endpoint's validation passes; since balance_stripe_url
   // already exists it returns the cached URL without recreating the Stripe session.
   const handleViewPaymentLink = async (order) => {
-    setPaymentLinkResult({ url: null, loading: true });
     try {
       const res = await fetch(`/api/orders/${order.id}/payment-link`, {
         method: "POST",
@@ -133,15 +133,11 @@ export default function TechnicianDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      setPaymentLinkResult({
-        url: data.url,
-        breakdown: data.breakdown ?? null,
-        emailSent: false,
-        customerEmail: null,
-      });
+      setOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, balanceStripeUrl: data.url } : o))
+      );
     } catch (err) {
       alert("Error retrieving payment link: " + err.message);
-      setPaymentLinkResult(null);
     }
   };
 
@@ -284,13 +280,36 @@ export default function TechnicianDashboard() {
                   </div>
                 )}
 
-                {/* Awaiting payment — show resend link button */}
-                {isAwaiting && (
+                {/* Awaiting payment — link is always visible here so it can be copied/referenced any time */}
+                {isAwaiting && order.balanceStripeUrl && (
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold text-blue-700 mb-1">
+                      Payment link (awaiting customer payment)
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        ref={(el) => (linkInputRefs.current[order.id] = el)}
+                        readOnly
+                        value={order.balanceStripeUrl}
+                        onClick={(e) => e.target.select()}
+                        onFocus={(e) => e.target.select()}
+                        className="flex-1 px-3 py-2 border-2 border-blue-200 rounded-xl text-xs text-washwell-gray-dark bg-blue-50 font-mono overflow-hidden"
+                      />
+                      <button
+                        onClick={(e) => copyWithFeedback(e, order.balanceStripeUrl, linkInputRefs.current[order.id])}
+                        className="px-4 py-2 bg-washwell-black text-white font-bold text-sm rounded-xl hover:opacity-90 transition-all"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {isAwaiting && !order.balanceStripeUrl && (
                   <button
                     onClick={() => handleViewPaymentLink(order)}
                     className="w-full mb-3 py-2 border-2 border-blue-300 text-blue-700 font-semibold rounded-xl hover:bg-blue-50 transition-colors text-sm"
                   >
-                    View Payment Link
+                    Get Payment Link
                   </button>
                 )}
 
@@ -575,16 +594,6 @@ export default function TechnicianDashboard() {
               </div>
             )}
 
-            {paymentLinkResult.url && (
-              <a
-                href={paymentLinkResult.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full mb-5 -mt-3 text-center text-xs text-washwell-gray hover:text-washwell-black underline underline-offset-2 transition-colors"
-              >
-                Open link in new tab
-              </a>
-            )}
 
             <button
               onClick={() => setPaymentLinkResult(null)}
