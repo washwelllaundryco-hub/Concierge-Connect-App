@@ -4,6 +4,7 @@
 //   - "pay_after_weigh" is for direct (non-hotel) customers: order confirmed immediately,
 //     payment link generated after the technician enters the weight.
 import { sql } from "@vercel/postgres";
+import { notifyNewOrderReady } from "../../src/lib/notifications.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -28,8 +29,26 @@ export default async function handler(req, res) {
     let resolvedUserId = null;
     let guestData = null;
 
+    const isValidUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s || "");
+
+    // Resolve placedByUserId (concierge) — the concierge portal may pass a raw
+    // Clerk user ID (e.g. "user_abc123") instead of the internal users.id UUID.
+    let resolvedPlacedByUserId = null;
+    if (placedByUserId) {
+      if (isValidUUID(placedByUserId)) {
+        resolvedPlacedByUserId = placedByUserId;
+      } else {
+        const placerResult = await sql`
+          INSERT INTO users (clerk_user_id)
+          VALUES (${placedByUserId})
+          ON CONFLICT (clerk_user_id) DO UPDATE SET clerk_user_id = EXCLUDED.clerk_user_id
+          RETURNING id
+        `;
+        resolvedPlacedByUserId = placerResult.rows[0].id;
+      }
+    }
+
     if (!resolvedGuestId && clerkUserId) {
-      const isValidUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s || "");
       const effectiveHotelId = isValidUUID(hotelId) ? hotelId : "a0daca51-acb7-4cbb-ac3d-6036b89f8f20";
 
       const userResult = await sql`
@@ -73,6 +92,9 @@ export default async function handler(req, res) {
         hotel_id:   hotel.id,
         hotel_name: hotel.name,
         room_number: effectiveRoom,
+        pickup_address: pickupAddress || null,
+        first_name: firstName || "",
+        last_name: lastName || "",
       };
     }
 
@@ -96,6 +118,8 @@ export default async function handler(req, res) {
         hotel_id:   g.hotel_id,
         hotel_name: g.hotel_name,
         room_number: g.room_number,
+        first_name: g.first_name,
+        last_name: g.last_name,
       };
     }
 
@@ -112,12 +136,34 @@ export default async function handler(req, res) {
          tier, payment_method, payment_verified, status, special_instructions, created_at)
       VALUES
         (${orderNumber}, ${resolvedGuestId}, ${guestData.hotel_id},
-         ${placedByUserId ? "concierge" : "guest"}, ${placedByUserId || resolvedUserId || null},
+         ${placedByUserId ? "concierge" : "guest"}, ${resolvedPlacedByUserId || resolvedUserId || null},
          ${effectiveTier}, ${paymentMethod || "stripe"}, ${autoApproved}, ${initialStatus},
          ${specialInstructions || null}, NOW())
       RETURNING id, order_number
     `;
     const order = orderResult.rows[0];
+
+    // Notify technician (WhatsApp) for orders ready to process immediately
+    if (initialStatus === "paid_pending_technician") {
+      try {
+        const guestName = `${guestData.first_name || ""} ${guestData.last_name || ""}`.trim() || "Guest";
+        const location = guestData.pickup_address
+          ? `Pickup: ${guestData.pickup_address}`
+          : guestData.room_number
+            ? `Room ${guestData.room_number}, ${guestData.hotel_name}`
+            : guestData.hotel_name;
+
+        await notifyNewOrderReady({
+          orderNumber,
+          guestName,
+          location,
+          tier: effectiveTier,
+          paymentNote: paymentMethod || "stripe",
+        });
+      } catch (notifyErr) {
+        console.error("WhatsApp notification failed:", notifyErr);
+      }
+    }
 
     res.json({
       success: true,

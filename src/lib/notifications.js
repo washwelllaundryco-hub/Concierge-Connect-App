@@ -41,6 +41,16 @@ async function composeWithAI(prompt) {
   const data = await res.json();
   return data.content[0].text.trim();
 }
+// TRIGGER 0: New order created and ready for the technician to process
+// (e.g. pay-after-weigh residential orders, room/hotel-account charges — no
+// separate payment-confirmation step is needed before processing begins)
+export async function notifyNewOrderReady(order) {
+  const msg = await composeWithAI(
+    `You write concise WhatsApp notifications for Washwell Laundry Co., a premium hotel laundry service. No emojis. Write a message under 80 words for a technician: a new order is ready to process. Order: ${JSON.stringify({ number: order.orderNumber, guest: order.guestName, location: order.location, tier: order.tier, paymentMethod: order.paymentNote })}. Include the order number, guest name, location, tier, and payment method. Sign off "— Washwell".`
+  );
+  await sendWhatsApp(TEAM.technician, msg);
+}
+
 // TRIGGER 1: Guest or concierge confirms payment
 // → Technician + Manager receive WhatsApp
 export async function notifyPaymentConfirmed(order) {
