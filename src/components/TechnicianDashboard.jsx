@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { PRICING_TIERS, getCorrectTier, calcDirectTotal } from "../constants";
-import { copyWithFeedback, canShare, shareLink } from "../lib/clipboard.js";
+import { copyWithFeedback } from "../lib/clipboard.js";
 
 const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", "out_for_delivery", "completed"];
 
@@ -301,14 +301,6 @@ export default function TechnicianDashboard() {
                       >
                         Copy
                       </button>
-                      {canShare() && (
-                        <button
-                          onClick={(e) => shareLink(e, order.balanceStripeUrl, "Washwell payment link")}
-                          className="px-4 py-2 border-2 border-washwell-black text-washwell-black font-bold text-sm rounded-xl hover:bg-washwell-cream transition-all"
-                        >
-                          Share
-                        </button>
-                      )}
                     </div>
                   </div>
                 )}
@@ -599,14 +591,6 @@ export default function TechnicianDashboard() {
                 >
                   Copy
                 </button>
-                {canShare() && (
-                  <button
-                    onClick={(e) => shareLink(e, paymentLinkResult.url, "Washwell payment link")}
-                    className="px-4 py-2 border-2 border-washwell-black text-washwell-black font-bold text-sm rounded-xl hover:bg-washwell-cream transition-all"
-                  >
-                    Share
-                  </button>
-                )}
               </div>
             )}
 

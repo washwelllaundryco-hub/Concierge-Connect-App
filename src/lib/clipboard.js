@@ -63,9 +63,9 @@ export async function copyToClipboard(text, inputEl) {
 // `text`) so that if the copy still fails, the text is left selected for
 // the user to copy manually via long-press.
 export async function copyWithFeedback(e, text, inputEl) {
-  const ok = await copyToClipboard(text, inputEl);
   const btn = e.currentTarget;
   const original = btn.textContent;
+  const ok = await copyToClipboard(text, inputEl);
   if (ok) {
     btn.textContent = "Copied!";
   } else if (inputEl) {
