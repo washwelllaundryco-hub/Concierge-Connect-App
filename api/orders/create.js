@@ -174,6 +174,6 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("Create order error:", err);
-    res.status(500).json({ error: err.message || String(err) });
+    res.status(500).json({ error: "Failed to create order" });
   }
 }
