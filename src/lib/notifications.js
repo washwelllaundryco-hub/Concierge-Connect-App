@@ -13,9 +13,17 @@ const TEAM = {
   concierge:  `whatsapp:${process.env.WHATSAPP_CONCIERGE}`,
   manager:    `whatsapp:${process.env.WHATSAPP_MANAGER}`,
 };
+// NOTE: despite the name (kept for compatibility with all call sites),
+// this sends a plain SMS via Twilio rather than a WhatsApp message.
+// The Twilio WhatsApp Sandbox requires recipients to re-"join" every 72
+// hours and enforces a 24-hour session window for free-form messages,
+// which made staff notifications silently fail. SMS has neither
+// restriction. Set TWILIO_SMS_NUMBER to an SMS-capable Twilio number.
 export async function sendWhatsApp(to, body) {
   const url = `${TWILIO_CONFIG.baseUrl}/Accounts/${TWILIO_CONFIG.accountSid}/Messages.json`;
-  const params = new URLSearchParams({ To: to, From: TWILIO_CONFIG.from, Body: body });
+  const toNumber = to.replace(/^whatsapp:/, "");
+  const fromNumber = (process.env.TWILIO_SMS_NUMBER || TWILIO_CONFIG.from).replace(/^whatsapp:/, "");
+  const params = new URLSearchParams({ To: toNumber, From: fromNumber, Body: body });
   const res = await fetch(url, {
     method: "POST",
     headers: {
