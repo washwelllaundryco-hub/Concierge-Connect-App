@@ -51,12 +51,16 @@ export const DIRECT_PRICING = {
   taxRate:      0.13,   // 13%
 };
 
+export const FLAT_RATE_MAX_LBS = 15;
+export const FLAT_RATE_PRICE = 49.00;
+
 export function calcDirectTotal(lbs, laundryType) {
-  const rate     = laundryType === "mixed" ? DIRECT_PRICING.rateMixed : DIRECT_PRICING.rateRegular;
-  const laundry  = parseFloat((lbs * rate).toFixed(2));
-  const delivery = DIRECT_PRICING.deliveryFee;
-  const subtotal = laundry + delivery;
-  const tax      = parseFloat((subtotal * DIRECT_PRICING.taxRate).toFixed(2));
-  const total    = parseFloat((subtotal + tax).toFixed(2));
-  return { laundry, delivery, tax, total, rate };
+  const rate      = laundryType === "mixed" ? DIRECT_PRICING.rateMixed : DIRECT_PRICING.rateRegular;
+  const flatRate  = lbs <= FLAT_RATE_MAX_LBS;
+  const laundry   = flatRate ? FLAT_RATE_PRICE : parseFloat((lbs * rate).toFixed(2));
+  const delivery  = DIRECT_PRICING.deliveryFee;
+  const subtotal  = laundry + delivery;
+  const tax       = parseFloat((subtotal * DIRECT_PRICING.taxRate).toFixed(2));
+  const total     = parseFloat((subtotal + tax).toFixed(2));
+  return { laundry, delivery, tax, total, rate, flatRate };
 }
