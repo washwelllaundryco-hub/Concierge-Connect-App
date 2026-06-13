@@ -9,9 +9,11 @@ import { createClerkClient } from "@clerk/backend";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const clerk  = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
-const RATE     = { regular: 2.75, mixed: 3.00 };
-const DELIVERY = 15.00;
-const TAX_RATE = 0.13;
+const RATE          = { regular: 2.75, mixed: 3.00 };
+const DELIVERY      = 15.00;
+const TAX_RATE      = 0.13;
+const FLAT_MAX_LBS  = 15;
+const FLAT_PRICE    = 49.00;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -50,7 +52,7 @@ export default async function handler(req, res) {
     // 2. Calculate price
     const lbs      = parseFloat(weight);
     const rate     = RATE[laundryType] || RATE.regular;
-    const laundry  = parseFloat((lbs * rate).toFixed(2));
+    const laundry  = lbs <= FLAT_MAX_LBS ? FLAT_PRICE : parseFloat((lbs * rate).toFixed(2));
     const subtotal = laundry + DELIVERY;
     const tax      = parseFloat((subtotal * TAX_RATE).toFixed(2));
     const total    = parseFloat((subtotal + tax).toFixed(2));
