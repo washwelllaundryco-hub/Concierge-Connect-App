@@ -60,13 +60,17 @@ export default async function handler(req, res) {
         FROM laundry_orders lo
         INNER JOIN hotel_guests hg ON lo.guest_id = hg.id
         INNER JOIN users u ON hg.user_id = u.id
-        INNER JOIN hotels h ON lo.hotel_id = h.id
+        LEFT JOIN hotels h ON lo.hotel_id = h.id
         WHERE lo.id = ${orderId}
       `;
 
       if (result.rows.length) {
         const o = result.rows[0];
-        const msg = `Stripe payment confirmed — ${o.order_number}\nGuest: ${o.guest_name}, Room ${o.room_number}\nHotel: ${o.hotel_name}\nService: ${o.tier}\n\nOrder is ready to process.`;
+        const locationLine = o.hotel_name
+          ? `Hotel: ${o.hotel_name}, Room ${o.room_number}`
+          : `Residential pickup/delivery`;
+        const serviceLine = o.tier ? `Service: ${o.tier}` : `Service: Residential (pay after weigh)`;
+        const msg = `Stripe payment confirmed — ${o.order_number}\nGuest: ${o.guest_name}\n${locationLine}\n${serviceLine}\n\nOrder is ready to process.`;
         await sendWhatsApp(`whatsapp:${process.env.WHATSAPP_TECHNICIAN}`, msg).catch(() => {});
         await sendWhatsApp(`whatsapp:${process.env.WHATSAPP_MANAGER}`, msg).catch(() => {});
       }
