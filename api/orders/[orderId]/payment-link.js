@@ -69,7 +69,7 @@ export default async function handler(req, res) {
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad",
             product_data: { name: laundryLabel },
             unit_amount: Math.round(laundry * 100),
           },
@@ -77,7 +77,7 @@ export default async function handler(req, res) {
         },
         {
           price_data: {
-            currency: "usd",
+            currency: "cad",
             product_data: { name: "Delivery Fee" },
             unit_amount: Math.round(DELIVERY * 100),
           },
@@ -85,7 +85,7 @@ export default async function handler(req, res) {
         },
         {
           price_data: {
-            currency: "usd",
+            currency: "cad",
             product_data: { name: "Tax (13%)" },
             unit_amount: Math.round(tax * 100),
           },

@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad",
             product_data: {
               name: `Washwell Laundry — Tier Upgrade to ${order.correctTier}`,
               description: `Balance due for order ${order.orderNumber} (${order.guestName})`,
