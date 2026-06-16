@@ -28,7 +28,6 @@ const STATUS_STEPS = [
 
 const PAYMENT_METHODS = [
   { value: "stripe",         label: "Credit Card",      desc: "Guest pays via Stripe" },
-  { value: "pay_after_weigh", label: "Weigh & Pay",     desc: "Send payment link after weighing" },
   { value: "cash",           label: "Cash on Delivery", desc: "Collect cash at delivery" },
   { value: "room_charge",    label: "Room Charge",      desc: "Charge to guest room" },
   { value: "hotel_account",  label: "Hotel Account",    desc: "Charge to hotel account" },

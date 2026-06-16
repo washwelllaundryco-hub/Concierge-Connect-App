@@ -119,6 +119,41 @@ export default function TechnicianDashboard() {
     }
   };
 
+  // Hotel tier upgrade: log weight + balance in DB, then generate Stripe upgrade link.
+  const handleConfirmWithUpgrade = async () => {
+    const w = parseFloat(weightInput);
+    if (!w || w <= 0 || !selectedOrder || !upgradeInfo) return;
+    setGeneratingLink(true);
+    try {
+      // 1. Write weight + balance_due + correct_tier to DB, move to in_wash
+      await handleStatusUpdate(
+        selectedOrder.id, "in_wash", w,
+        { balanceDue: upgradeInfo.balanceDue, correctTier: upgradeInfo.correctTier }
+      );
+      // 2. Generate the Stripe balance link (reads balance_due from DB)
+      const res = await fetch(`/api/orders/${selectedOrder.id}/upgrade-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setPaymentLinkResult({ url: data.url, breakdown: null });
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === selectedOrder.id ? { ...o, balanceStripeUrl: data.url } : o
+        )
+      );
+      setShowWeightModal(false);
+      setSelectedOrder(null);
+      setWeightInput("");
+    } catch (err) {
+      alert("Error generating upgrade link: " + err.message);
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
+
   // Re-show the payment link for an order that's already awaiting payment.
   // The link was already generated + cached server-side (balance_stripe_url),
   // so we just need to fetch it back -- pass the order's recorded weight so
@@ -276,6 +311,31 @@ export default function TechnicianDashboard() {
                   <div className="mb-4 text-center">
                     <div className="text-3xl font-display font-bold text-washwell-green">
                       {order.totalWeightLbs} lbs
+                    </div>
+                  </div>
+                )}
+
+                {/* Tier upgrade balance — visible while order proceeds through wash cycle */}
+                {!isAwaiting && order.balanceStripeUrl && (
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold text-orange-700 mb-1">
+                      Balance due — share with guest before delivery
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        ref={(el) => (linkInputRefs.current[order.id] = el)}
+                        readOnly
+                        value={order.balanceStripeUrl}
+                        onClick={(e) => e.target.select()}
+                        onFocus={(e) => e.target.select()}
+                        className="flex-1 px-3 py-2 border-2 border-orange-200 rounded-xl text-xs text-washwell-gray-dark bg-orange-50 font-mono overflow-hidden"
+                      />
+                      <button
+                        onClick={(e) => copyWithFeedback(e, order.balanceStripeUrl, linkInputRefs.current[order.id])}
+                        className="px-4 py-2 bg-washwell-black text-white font-bold text-sm rounded-xl hover:opacity-90 transition-all"
+                      >
+                        Copy
+                      </button>
                     </div>
                   </div>
                 )}
@@ -489,7 +549,7 @@ export default function TechnicianDashboard() {
                       Exceeds <strong>{upgradeInfo.paidTier}</strong> · Correct tier: <strong>{upgradeInfo.correctTier}</strong>
                     </p>
                     <p className="text-orange-800 font-bold text-sm mt-2">Balance due: ${upgradeInfo.balanceDue}</p>
-                    <p className="text-orange-600 text-xs mt-1">Concierge will be notified to collect payment.</p>
+                    <p className="text-orange-600 text-xs mt-1">A Stripe payment link will be generated — share with guest before delivery.</p>
                   </div>
                 )}
 
@@ -504,20 +564,24 @@ export default function TechnicianDashboard() {
                     onClick={() => {
                       const w = parseFloat(weightInput);
                       if (w > 0) {
-                        handleStatusUpdate(selectedOrder.id, "in_wash", w,
-                          upgradeInfo ? { balanceDue: upgradeInfo.balanceDue, correctTier: upgradeInfo.correctTier } : null
-                        );
-                        setShowWeightModal(false);
-                        setSelectedOrder(null);
-                        setWeightInput("");
+                        if (upgradeInfo) {
+                          handleConfirmWithUpgrade();
+                        } else {
+                          handleStatusUpdate(selectedOrder.id, "in_wash", w, null);
+                          setShowWeightModal(false);
+                          setSelectedOrder(null);
+                          setWeightInput("");
+                        }
                       }
                     }}
-                    disabled={!weightInput || parseFloat(weightInput) <= 0}
+                    disabled={!weightInput || parseFloat(weightInput) <= 0 || generatingLink}
                     className={`flex-1 px-6 py-3 text-white font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                       upgradeInfo ? "bg-orange-500 hover:bg-orange-600" : "bg-washwell-green hover:bg-washwell-green-dark"
                     }`}
                   >
-                    {upgradeInfo ? `Confirm + Flag $${upgradeInfo.balanceDue}` : "Confirm"}
+                    {upgradeInfo
+                      ? (generatingLink ? "Generating Link…" : `Confirm + Generate Link ($${upgradeInfo.balanceDue})`)
+                      : "Confirm"}
                   </button>
                 </div>
               </>
