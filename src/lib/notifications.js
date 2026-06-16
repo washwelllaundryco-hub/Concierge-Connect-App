@@ -36,25 +36,35 @@ export async function sendWhatsApp(to, body) {
   if (!res.ok) throw new Error(`Twilio error: ${result.message}`);
   return result;
 }
-async function composeWithAI(prompt) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-5",
-      max_tokens: 300,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  const data = await res.json();
-  return data.content[0].text.trim();
+async function composeWithAI(prompt, fallback) {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5-20251001",
+        max_tokens: 300,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    const data = await res.json();
+    if (!data.content || !data.content[0]) {
+      console.error("composeWithAI: unexpected Anthropic response", JSON.stringify(data));
+      return fallback;
+    }
+    return data.content[0].text.trim();
+  } catch (err) {
+    console.error("composeWithAI failed, using fallback:", err.message);
+    return fallback;
+  }
 }
 // TRIGGER 0: New order created and ready for the technician to process
 // (e.g. pay-after-weigh residential orders, room/hotel-account charges — no
 // separate payment-confirmation step is needed before processing begins)
 export async function notifyNewOrderReady(order) {
   const msg = await composeWithAI(
-    `You write concise WhatsApp notifications for Washwell Laundry Co., a premium hotel laundry service. No emojis. Write a message under 80 words for a technician: a new order is ready to process. Order: ${JSON.stringify({ number: order.orderNumber, guest: order.guestName, location: order.location, tier: order.tier, paymentMethod: order.paymentNote })}. Include the order number, guest name, location, tier, and payment method. Sign off "— Washwell".`
+    `You write concise WhatsApp notifications for Washwell Laundry Co., a premium hotel laundry service. No emojis. Write a message under 80 words for a technician: a new order is ready to process. Order: ${JSON.stringify({ number: order.orderNumber, guest: order.guestName, location: order.location, tier: order.tier, paymentMethod: order.paymentNote })}. Include the order number, guest name, location, tier, and payment method. Sign off "— Washwell".`,
+    `New order ready — ${order.orderNumber}\nGuest: ${order.guestName} | ${order.location}\nService: ${order.tier} | ${order.paymentNote}\n— Washwell`
   );
   await sendWhatsApp(TEAM.technician, msg);
 }
@@ -63,7 +73,8 @@ export async function notifyNewOrderReady(order) {
 // → Technician + Manager receive WhatsApp
 export async function notifyPaymentConfirmed(order) {
   const msg = await composeWithAI(
-    `You write concise WhatsApp notifications for Washwell Laundry Co., a premium hotel laundry service. No emojis. Write a message under 80 words for a technician: a new paid order is ready to process. Order: ${JSON.stringify({ number: order.orderNumber, guest: order.guestName, room: order.roomNumber, hotel: order.hotelName, amount: order.totalAmount, method: order.paymentNote || "Stripe" })}. Include order number, guest name, room, payment method. Sign off "— Washwell".`
+    `You write concise WhatsApp notifications for Washwell Laundry Co., a premium hotel laundry service. No emojis. Write a message under 80 words for a technician: a new paid order is ready to process. Order: ${JSON.stringify({ number: order.orderNumber, guest: order.guestName, room: order.roomNumber, hotel: order.hotelName, amount: order.totalAmount, method: order.paymentNote || "Stripe" })}. Include order number, guest name, room, payment method. Sign off "— Washwell".`,
+    `Payment confirmed — ${order.orderNumber}\nGuest: ${order.guestName}, Room ${order.roomNumber}\n$${order.totalAmount} via ${order.paymentNote || "Stripe"}\n— Washwell`
   );
   await sendWhatsApp(TEAM.technician, msg);
   await sendWhatsApp(TEAM.manager, `Payment received — Order ${order.orderNumber} | $${order.totalAmount} | ${order.guestName}, Room ${order.roomNumber} | ${new Date().toLocaleTimeString()} — Washwell`);
@@ -72,7 +83,8 @@ export async function notifyPaymentConfirmed(order) {
 // → Concierge receives confirmation WhatsApp
 export async function notifyPickupRequested(order, burqJob) {
   const msg = await composeWithAI(
-    `Write a short WhatsApp confirmation under 70 words for a concierge at Washwell Laundry Co. No emojis. A Burq driver has been requested. Details: ${JSON.stringify({ order: order.orderNumber, guest: order.guestName, room: order.roomNumber, jobId: burqJob.burq_job_id, eta: burqJob.estimated_delivery_time })}. Sign off "— Washwell".`
+    `Write a short WhatsApp confirmation under 70 words for a concierge at Washwell Laundry Co. No emojis. A Burq driver has been requested. Details: ${JSON.stringify({ order: order.orderNumber, guest: order.guestName, room: order.roomNumber, jobId: burqJob.burq_job_id, eta: burqJob.estimated_delivery_time })}. Sign off "— Washwell".`,
+    `Driver requested — ${order.orderNumber}\nGuest: ${order.guestName}, Room ${order.roomNumber}\nETA: ${burqJob.estimated_delivery_time}\n— Washwell`
   );
   await sendWhatsApp(TEAM.concierge, msg);
 }
@@ -80,7 +92,8 @@ export async function notifyPickupRequested(order, burqJob) {
 // → Concierge receives driver details
 export async function notifyDriverAssigned(order, driver) {
   const msg = await composeWithAI(
-    `Write a short WhatsApp message under 70 words for a concierge at Washwell Laundry Co. No emojis. A driver has been assigned. Details: ${JSON.stringify({ order: order.orderNumber, driver: driver.name, phone: driver.phone, vehicle: driver.vehicle, eta: driver.estimatedPickup })}. Sign off "— Washwell".`
+    `Write a short WhatsApp message under 70 words for a concierge at Washwell Laundry Co. No emojis. A driver has been assigned. Details: ${JSON.stringify({ order: order.orderNumber, driver: driver.name, phone: driver.phone, vehicle: driver.vehicle, eta: driver.estimatedPickup })}. Sign off "— Washwell".`,
+    `Driver assigned — ${order.orderNumber}\nDriver: ${driver.name} | ${driver.phone}\nETA: ${driver.estimatedPickup}\n— Washwell`
   );
   await sendWhatsApp(TEAM.concierge, msg);
 }
@@ -88,7 +101,8 @@ export async function notifyDriverAssigned(order, driver) {
 // → Manager receives sustainability summary + WhatsApp
 export async function notifyOrderCompleted(order, metrics) {
   const msg = await composeWithAI(
-    `Write a short WhatsApp order summary under 80 words for the Washwell Laundry Co. manager. No emojis. Order complete. Details: ${JSON.stringify({ order: order.orderNumber, guest: order.guestName, weight: order.totalWeightLbs, waterSaved: metrics.water_saved_gallons, energySaved: metrics.energy_saved_kwh })}. Include sustainability numbers. Sign off "— Washwell".`
+    `Write a short WhatsApp order summary under 80 words for the Washwell Laundry Co. manager. No emojis. Order complete. Details: ${JSON.stringify({ order: order.orderNumber, guest: order.guestName, weight: order.totalWeightLbs, waterSaved: metrics.water_saved_gallons, energySaved: metrics.energy_saved_kwh })}. Include sustainability numbers. Sign off "— Washwell".`,
+    `Order complete — ${order.orderNumber}\nGuest: ${order.guestName} | ${order.totalWeightLbs}lbs\nWater saved: ${metrics.water_saved_gallons}gal | Energy: ${metrics.energy_saved_kwh}kWh\n— Washwell`
   );
   await sendWhatsApp(TEAM.manager, msg);
 }
