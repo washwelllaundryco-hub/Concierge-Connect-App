@@ -34,9 +34,9 @@ export default async function handler(req, res) {
         hg.pickup_address         AS "pickupAddress",
         h.name                    AS "hotelName"
       FROM laundry_orders lo
-      INNER JOIN hotel_guests hg ON lo.guest_id = hg.id
-      INNER JOIN users u ON hg.user_id = u.id
-      INNER JOIN hotels h ON lo.hotel_id = h.id
+      LEFT JOIN hotel_guests hg ON lo.guest_id = hg.id
+      LEFT JOIN users u ON hg.user_id = u.id
+      LEFT JOIN hotels h ON lo.hotel_id = h.id
       WHERE lo.status NOT IN ('completed', 'cancelled')
       ORDER BY lo.created_at ASC
     `;

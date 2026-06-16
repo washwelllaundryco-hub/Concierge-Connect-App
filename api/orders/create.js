@@ -143,8 +143,9 @@ export default async function handler(req, res) {
     `;
     const order = orderResult.rows[0];
 
-    // Notify technician (WhatsApp) for orders ready to process immediately
-    if (initialStatus === "paid_pending_technician") {
+    // Notify technician for orders ready to process immediately, OR any
+    // concierge-placed order (concierge handles payment, technician still needs to know)
+    if (initialStatus === "paid_pending_technician" || resolvedPlacedByUserId) {
       try {
         const guestName = `${guestData.first_name || ""} ${guestData.last_name || ""}`.trim() || "Guest";
         const location = guestData.pickup_address
