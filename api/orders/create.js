@@ -98,6 +98,37 @@ export default async function handler(req, res) {
       };
     }
 
+    // Concierge path: no Clerk account for the hotel guest — create user+guest
+    // from firstName/lastName/roomNumber/hotelId sent by the concierge portal.
+    if (!resolvedGuestId && firstName && roomNumber && hotelId) {
+      const effectiveHotelId = isValidUUID(hotelId) ? hotelId : "a0daca51-acb7-4cbb-ac3d-6036b89f8f20";
+      const hotelResult = await sql`SELECT id, name FROM hotels WHERE id = ${effectiveHotelId} LIMIT 1`;
+      const hotel = hotelResult.rows[0] || { id: effectiveHotelId, name: "The Hotel" };
+
+      const userResult = await sql`
+        INSERT INTO users (first_name, last_name)
+        VALUES (${firstName || ""}, ${lastName || ""})
+        RETURNING id
+      `;
+      const userId = userResult.rows[0].id;
+
+      const guestResult = await sql`
+        INSERT INTO hotel_guests (user_id, hotel_id, room_number)
+        VALUES (${userId}, ${hotel.id}, ${roomNumber || null})
+        RETURNING id
+      `;
+      resolvedGuestId = guestResult.rows[0].id;
+
+      guestData = {
+        hotel_id:   hotel.id,
+        hotel_name: hotel.name,
+        room_number: roomNumber || null,
+        pickup_address: null,
+        first_name: firstName || "",
+        last_name:  lastName  || "",
+      };
+    }
+
     if (!resolvedGuestId) {
       return res.status(400).json({ error: "guestId or clerkUserId is required" });
     }

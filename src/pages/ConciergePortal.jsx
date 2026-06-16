@@ -117,6 +117,7 @@ export default function ConciergePortal() {
           tier:          newOrder.tier,
           paymentMethod: newOrder.paymentMethod,
           hotelId,
+          placedByUserId: user.id,
         }),
       });
       if (res.ok) {
