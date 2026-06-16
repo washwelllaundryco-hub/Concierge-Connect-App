@@ -155,7 +155,8 @@ export default async function handler(req, res) {
     }
 
     const effectiveTier  = tier || "Standard Load";
-    const autoApproved   = paymentMethod !== "stripe";
+    // Concierge-placed orders are always auto-approved (hotel handles billing separately)
+    const autoApproved   = resolvedPlacedByUserId ? true : paymentMethod !== "stripe";
     const initialStatus  = autoApproved ? "paid_pending_technician" : "pending_payment";
 
     const seqResult = await sql`SELECT nextval('order_number_seq') AS n`;
