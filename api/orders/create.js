@@ -169,7 +169,7 @@ export default async function handler(req, res) {
       VALUES
         (${orderNumber}, ${resolvedGuestId}, ${guestData.hotel_id},
          ${placedByUserId ? "concierge" : "guest"}, ${resolvedPlacedByUserId || resolvedUserId || null},
-         ${effectiveTier}, ${paymentMethod || "stripe"}, ${autoApproved}, ${initialStatus},
+         ${effectiveTier}, ${paymentMethod || "stripe"}, ${autoApproved && paymentMethod !== "stripe"}, ${initialStatus},
          ${specialInstructions || null}, NOW())
       RETURNING id, order_number
     `;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { PRICING_TIERS, getCorrectTier, calcDirectTotal } from "../constants";
 import { copyWithFeedback } from "../lib/clipboard.js";
+import HotelAccountsTab from "./HotelAccountsTab";
 
 const STATUS_FLOW = ["paid_pending_technician", "in_wash", "drying", "folding", "out_for_delivery", "completed"];
 
@@ -31,6 +32,7 @@ export default function TechnicianDashboard() {
   const [machineInputs, setMachineInputs]        = useState({});
   const [confirmCancelId, setConfirmCancelId]    = useState(null);
   const [paymentLinkResult, setPaymentLinkResult] = useState(null); // { url, breakdown, emailSent, customerEmail }
+  const [activeTab, setActiveTab]            = useState("orders");
   const paymentLinkInputRef = useRef(null);
   const linkInputRefs = useRef({});
   const [generatingLink, setGeneratingLink]      = useState(false);
@@ -230,6 +232,31 @@ export default function TechnicianDashboard() {
         </div>
       </header>
 
+      {/* Tab Navigation */}
+      <div className="bg-washwell-black border-b-2 border-washwell-green/20">
+        <div className="max-w-6xl mx-auto px-6 flex gap-1 pt-2">
+          {[
+            { key: "orders", label: "Active Orders" },
+            { key: "accounts", label: "Hotel Accounts" },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-5 py-2.5 text-sm font-bold rounded-t-lg transition-all ${
+                activeTab === tab.key
+                  ? "bg-washwell-cream text-washwell-black"
+                  : "text-white/50 hover:text-white"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === "accounts" && <HotelAccountsTab />}
+
+      {activeTab === "orders" && (
       <main className="max-w-6xl mx-auto px-6 py-12">
         <h2 className="text-2xl font-display font-bold text-washwell-black mb-8">
           Active Orders ({orders.length})
@@ -280,12 +307,24 @@ export default function TechnicianDashboard() {
                       <p className="text-sm text-washwell-gray-dark">Room {order.roomNumber}</p>
                     )}
                   </div>
-                  {order.paymentVerified ? (
+                  {order.paymentVerified && order.paymentMethod === "stripe" ? (
                     <div className="px-3 py-2 bg-washwell-green rounded-xl border-2 border-washwell-green-dark flex items-center gap-2">
                       <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
                       <span className="text-white text-xs font-bold uppercase tracking-wider">Paid</span>
+                    </div>
+                  ) : order.paymentMethod === "cash" ? (
+                    <div className="px-3 py-2 bg-gray-100 rounded-xl border-2 border-gray-300">
+                      <span className="text-gray-700 text-xs font-bold uppercase tracking-wider">Cash COD</span>
+                    </div>
+                  ) : order.paymentMethod === "room_charge" ? (
+                    <div className="px-3 py-2 bg-blue-50 rounded-xl border-2 border-blue-200">
+                      <span className="text-blue-700 text-xs font-bold uppercase tracking-wider">Room Charge</span>
+                    </div>
+                  ) : order.paymentMethod === "hotel_account" ? (
+                    <div className="px-3 py-2 bg-blue-50 rounded-xl border-2 border-blue-200">
+                      <span className="text-blue-700 text-xs font-bold uppercase tracking-wider">Hotel Account</span>
                     </div>
                   ) : isAwaiting ? (
                     <div className="px-3 py-2 bg-blue-50 rounded-xl border-2 border-blue-200">
@@ -436,6 +475,7 @@ export default function TechnicianDashboard() {
           })}
         </div>
       </main>
+      )}
 
       {/* Weight Modal */}
       {showWeightModal && selectedOrder && (
