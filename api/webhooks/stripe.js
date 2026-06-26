@@ -63,10 +63,20 @@ export default async function handler(req, res) {
           await sendWhatsApp(`whatsapp:${process.env.WHATSAPP_MANAGER}`, msg).catch(() => {});
         }
       } else {
-        // Initial payment (residential or concierge Stripe) — mark ready for technician
+        // Determine correct target status:
+        // - Residential (pay_after_weigh) orders are already in awaiting_payment after weighing
+        //   → move to in_wash (technician already has the laundry)
+        // - New Stripe hotel orders in pending_payment → move to paid_pending_technician
+        const orderRow = await sql`SELECT status, payment_method FROM laundry_orders WHERE id = ${orderId}`;
+        const curStatus = orderRow.rows[0]?.status;
+        const curMethod = orderRow.rows[0]?.payment_method;
+        const newStatus = (curMethod === "pay_after_weigh" || curStatus === "awaiting_payment")
+          ? "in_wash"
+          : "paid_pending_technician";
+
         await sql`
           UPDATE laundry_orders
-          SET status = 'paid_pending_technician',
+          SET status = ${newStatus},
               payment_verified = true,
               payment_confirmed_at = NOW(),
               updated_at = NOW()
@@ -74,7 +84,7 @@ export default async function handler(req, res) {
         `;
         await sql`
           INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, note, changed_at)
-          VALUES (${orderId}, 'pending', 'paid_pending_technician', 'stripe_webhook', 'Payment confirmed by Stripe', NOW())
+          VALUES (${orderId}, ${curStatus || 'pending'}, ${newStatus}, 'stripe_webhook', 'Payment confirmed by Stripe', NOW())
         `;
         const result = await sql`
           SELECT lo.order_number, lo.tier, hg.room_number,
