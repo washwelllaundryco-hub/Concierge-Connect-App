@@ -110,7 +110,7 @@ export default function TechnicianDashboard() {
                             <span className="font-display text-sm font-bold text-washwell-green">{order.orderNumber}</span>
                           </div>
                           <h3 className="text-xl font-display font-bold text-washwell-black mb-1">{order.guestName}</h3>
-                          <p className="text-sm text-washwell-gray-dark">{order.roomNumber?`Room ${order.roomNumber}`:order.hotelName||"Residential"}</p>
+                          <p className="text-sm text-washwell-gray-dark">{order.hotelName && <span className="font-semibold">{order.hotelName}</span>}{order.hotelName && order.roomNumber && " · "}{order.roomNumber ? `Room ${order.roomNumber}` : !order.hotelName ? "Residential" : ""}</p>
                         </div>
                         {isPaid?(
                           <div className="px-3 py-2 bg-washwell-green rounded-xl border-2 border-washwell-green-dark flex items-center gap-2">
