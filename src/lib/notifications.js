@@ -73,7 +73,7 @@ export async function notifyNewOrderReady(order) {
 // → Technician + Manager receive WhatsApp
 export async function notifyPaymentConfirmed(order) {
   const msg = await composeWithAI(
-    `You write concise WhatsApp notifications for Washwell Laundry Co., a premium hotel laundry service. No emojis. Write a message under 80 words for a technician: a new paid order is ready to process. Order: ${JSON.stringify({ number: order.orderNumber, guest: order.guestName, room: order.roomNumber, hotel: order.hotelName, amount: order.totalAmount, method: order.paymentNote || "Stripe" })}. Include order number, guest name, room, payment method. Sign off "— Washwell".`,
+    `You write concise WhatsApp notifications for Washwell Laundry Co., a premium hotel laundry service. No emojis. Write a message under 80 words for a technician: a new paid order is ready to process. Order: ${JSON.stringify({ number: order.orderNumber, guest: order.guestName, room: order.roomNumber, hotel: order.hotelName || "Residential / Direct", amount: order.totalAmount, method: order.paymentNote || "Stripe" })}. Include order number, guest name, room, payment method. Sign off "— Washwell".`,
     `Payment confirmed — ${order.orderNumber}\nGuest: ${order.guestName}, Room ${order.roomNumber}\n$${order.totalAmount} via ${order.paymentNote || "Stripe"}\n— Washwell`
   );
   await sendWhatsApp(TEAM.technician, msg);
