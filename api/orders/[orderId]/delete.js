@@ -1,19 +1,16 @@
-// DELETE /api/orders/[id]  — soft-cancel (sets status = 'cancelled')
-import { db } from "../../_db.js";
-
+import { sql } from "@vercel/postgres";
 export default async function handler(req, res) {
   if (req.method !== "DELETE") return res.status(405).end();
-  const { id: orderId } = req.query;
+  const { orderId } = req.query;
   try {
-    const { rows } = await db.query(
-      `UPDATE laundry_orders SET status = 'cancelled', updated_at = NOW()
-       WHERE id = $1 RETURNING id, order_number AS "orderNumber"`,
-      [orderId]
-    );
-    if (!rows.length) return res.status(404).json({ error: "Order not found" });
-    res.json({ success: true, orderId: rows[0].id, orderNumber: rows[0].orderNumber });
+    const result = await sql`
+      UPDATE laundry_orders SET status = 'cancelled', updated_at = NOW()
+      WHERE id = ${orderId} RETURNING id, order_number AS "orderNumber"
+    `;
+    if (!result.rows.length) return res.status(404).json({ error: "Order not found" });
+    res.json({ success: true, orderId: result.rows[0].id, orderNumber: result.rows[0].orderNumber });
   } catch (err) {
-    console.error("delete order error:", err);
+    console.error(err);
     res.status(500).json({ error: "Failed to cancel order" });
   }
 }
