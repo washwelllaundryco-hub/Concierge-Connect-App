@@ -1,35 +1,52 @@
-// GET /api/guest/orders?clerkUserId=xxx
-// Returns the guest's current and recent orders
-import { sql } from "@vercel/postgres";
+// GET /api/guest/orders?userId=<clerkId>
+// Returns the guest's most recent active order and their sustainability totals.
+import { db } from "../_db.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
-
-  const { clerkUserId } = req.query;
-  if (!clerkUserId) return res.status(400).json({ error: "clerkUserId required" });
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: "userId required" });
 
   try {
-    const result = await sql`
-      SELECT
-        lo.id,
-        lo.order_number  AS "orderNumber",
-        lo.status,
-        lo.tier,
-        lo.total_amount  AS "totalAmount",
-        lo.payment_verified AS "paymentVerified",
-        lo.balance_stripe_url AS "paymentLinkUrl",
-        lo.created_at    AS "createdAt",
-        lo.updated_at    AS "updatedAt"
-      FROM laundry_orders lo
-      INNER JOIN hotel_guests hg ON lo.guest_id = hg.id
-      INNER JOIN users u ON hg.user_id = u.id
-      WHERE u.clerk_user_id = ${clerkUserId}
-      ORDER BY lo.created_at DESC
-      LIMIT 20
-    `;
-    res.json({ orders: result.rows });
+    // Get active order
+    const orderResult = await db.query(
+      `SELECT lo.id, lo.order_number AS "orderNumber", lo.status, lo.total_amount AS "totalAmount"
+       FROM laundry_orders lo
+       JOIN hotel_guests hg ON lo.guest_id = hg.id
+       JOIN users u ON hg.user_id = u.id
+       WHERE u.clerk_user_id = $1
+         AND lo.status NOT IN ('completed', 'cancelled', 'delivered')
+       ORDER BY lo.created_at DESC LIMIT 1`,
+      [userId]
+    );
+
+    // Get sustainability totals
+    const sustainResult = await db.query(
+      `SELECT
+         COUNT(DISTINCT lo.id) AS "totalOrders",
+         COALESCE(SUM(sm.water_saved_gallons), 0) AS "waterSavedGallons",
+         COALESCE(SUM(sm.energy_saved_kwh), 0)    AS "energySavedKwh",
+         COALESCE(SUM(sm.co2_lbs_avoided), 0)     AS "co2AvoidedLbs"
+       FROM laundry_orders lo
+       JOIN hotel_guests hg ON lo.guest_id = hg.id
+       JOIN users u ON hg.user_id = u.id
+       LEFT JOIN sustainability_metrics sm ON lo.id = sm.order_id
+       WHERE u.clerk_user_id = $1 AND lo.status = 'completed'`,
+      [userId]
+    );
+
+    const s = sustainResult.rows[0];
+    res.json({
+      activeOrder:    orderResult.rows[0] || null,
+      sustainability: {
+        totalOrders:       parseInt(s.totalOrders),
+        waterSavedGallons: parseFloat(s.waterSavedGallons).toFixed(1),
+        energySavedKwh:    parseFloat(s.energySavedKwh).toFixed(1),
+        co2AvoidedLbs:     parseFloat(s.co2AvoidedLbs).toFixed(1),
+      },
+    });
   } catch (err) {
-    console.error(err);
+    console.error("guest/orders error:", err);
     res.status(500).json({ error: "Failed to fetch guest orders" });
   }
 }

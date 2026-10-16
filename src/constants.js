@@ -1,66 +1,73 @@
+// Hotel / Concierge tier pricing (flat rate, weight-based tiers)
 export const PRICING_TIERS = {
   "Essential Load": {
-    tagline: "Wash & fold for loads less than 15 lbs",
+    tagline: "Wash & fold for loads up to 15 lbs",
     price: "68.00",
+    maxLbs: 15,
     stripeUrl: "https://buy.stripe.com/6oU6oI3KJ2lu0Zw3Egc3m0m",
   },
   "Standard Load": {
-    tagline: "Our most popular everyday service, 16 – 30 lbs",
+    tagline: "Our most popular everyday service, 16–30 lbs",
     price: "88.00",
+    maxLbs: 30,
     stripeUrl: "https://buy.stripe.com/28EfZi9534tCgYu8YAc3m0n",
     recommended: true,
   },
   "Premium Load": {
-    tagline: "Delicate care & premium detergents, 31 – 50 lbs",
+    tagline: "Delicate care & premium detergents, 31–50 lbs",
     price: "128.00",
+    maxLbs: 50,
     stripeUrl: "https://buy.stripe.com/4gM28s1CB4tCdMicaMc3m0o",
   },
   "Executive Load": {
-    tagline: "Priority handling with same-day return, 51 – 75 lbs",
+    tagline: "Priority handling with same-day return, 51–75 lbs",
     price: "188.00",
+    maxLbs: 75,
     stripeUrl: "https://buy.stripe.com/dRm3cwftrbW4dMi5Moc3m0p",
   },
   "Bulk Service": {
-    tagline: "Large loads handled with care, 76 – 100 lbs",
+    tagline: "Large loads handled with care, 76–100 lbs",
     price: "245.00",
+    maxLbs: 100,
     stripeUrl: "https://buy.stripe.com/cNibJ280Z2lu9w2deQc3m0q",
   },
 };
 
-export const TIER_MAX_LBS = {
-  "Essential Load": 15,
-  "Standard Load":  30,
-  "Premium Load":   50,
-  "Executive Load": 75,
-  "Bulk Service":   Infinity,
+// Residential pricing (per-lb, minimum $49 for ≤15 lbs)
+export const RESIDENTIAL_PRICING = {
+  "Regular Load": {
+    tagline: "Everyday clothes — wash & fold",
+    ratePerLb: 2.75,
+    flatRateUnder15: 49.00,
+    description: "Shirts, pants, underwear, socks, casual wear",
+  },
+  "Mixed Bag": {
+    tagline: "Mix of clothing types",
+    ratePerLb: 2.85,
+    flatRateUnder15: 49.00,
+    description: "Combination of clothing and light linens",
+  },
+  "Towels & Sheets": {
+    tagline: "Towels, sheets, and bedding",
+    ratePerLb: 3.00,
+    flatRateUnder15: 49.00,
+    description: "Bath towels, bed sheets, pillowcases, duvet covers",
+  },
 };
 
-export function getCorrectTier(lbs) {
-  if (lbs <= 15) return "Essential Load";
-  if (lbs <= 30) return "Standard Load";
-  if (lbs <= 50) return "Premium Load";
-  if (lbs <= 75) return "Executive Load";
-  return "Bulk Service";
+// Calculate the price for a residential order given service type and weight
+export function calcResidentialPrice(serviceType, weightLbs) {
+  const pricing = RESIDENTIAL_PRICING[serviceType] || RESIDENTIAL_PRICING["Regular Load"];
+  if (weightLbs <= 15) return pricing.flatRateUnder15;
+  return parseFloat((weightLbs * pricing.ratePerLb).toFixed(2));
 }
 
-// ── Residential (direct) pricing ─────────────────────────────────────────────
-export const DIRECT_PRICING = {
-  rateRegular:  2.75,   // per lb — regular clothes
-  rateMixed:    3.00,   // per lb — towels/sheets/mixed
-  deliveryFee:  15.00,
-  taxRate:      0.13,   // 13%
-};
-
-export const FLAT_RATE_MAX_LBS = 15;
-export const FLAT_RATE_PRICE = 49.00;
-
-export function calcDirectTotal(lbs, laundryType) {
-  const rate      = laundryType === "mixed" ? DIRECT_PRICING.rateMixed : DIRECT_PRICING.rateRegular;
-  const flatRate  = lbs <= FLAT_RATE_MAX_LBS;
-  const laundry   = flatRate ? FLAT_RATE_PRICE : parseFloat((lbs * rate).toFixed(2));
-  const delivery  = DIRECT_PRICING.deliveryFee;
-  const subtotal  = laundry + delivery;
-  const tax       = parseFloat((subtotal * DIRECT_PRICING.taxRate).toFixed(2));
-  const total     = parseFloat((subtotal + tax).toFixed(2));
-  return { laundry, delivery, tax, total, rate, flatRate };
+// Calculate the price for a hotel order given actual weight (finds correct tier)
+export function calcHotelPrice(weightLbs) {
+  const tiers = Object.entries(PRICING_TIERS);
+  for (const [name, tier] of tiers) {
+    if (weightLbs <= tier.maxLbs) return { tierName: name, price: parseFloat(tier.price) };
+  }
+  const [name, last] = tiers[tiers.length - 1];
+  return { tierName: name, price: parseFloat(last.price) };
 }

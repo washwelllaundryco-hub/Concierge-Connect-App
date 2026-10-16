@@ -1,7 +1,4 @@
-// WhatsApp Notification Service — Twilio + Claude AI
-// Sends WhatsApp messages to technician, concierge, and manager
-// triggered by payment confirmation, pickup request, driver assignment,
-// and order completion.
+// Washwell Notification Service — Twilio WhatsApp + Resend Email
 const TWILIO_CONFIG = {
   accountSid: process.env.TWILIO_ACCOUNT_SID,
   authToken:  process.env.TWILIO_AUTH_TOKEN,
@@ -13,17 +10,12 @@ const TEAM = {
   concierge:  `whatsapp:${process.env.WHATSAPP_CONCIERGE}`,
   manager:    `whatsapp:${process.env.WHATSAPP_MANAGER}`,
 };
-// NOTE: despite the name (kept for compatibility with all call sites),
-// this sends a plain SMS via Twilio rather than a WhatsApp message.
-// The Twilio WhatsApp Sandbox requires recipients to re-"join" every 72
-// hours and enforces a 24-hour session window for free-form messages,
-// which made staff notifications silently fail. SMS has neither
-// restriction. Set TWILIO_SMS_NUMBER to an SMS-capable Twilio number.
+
+// ── WhatsApp ──────────────────────────────────────────────────────────────────
 export async function sendWhatsApp(to, body) {
+  if (!to || !process.env.TWILIO_ACCOUNT_SID) return;
   const url = `${TWILIO_CONFIG.baseUrl}/Accounts/${TWILIO_CONFIG.accountSid}/Messages.json`;
-  const toNumber = to.replace(/^whatsapp:/, "");
-  const fromNumber = (process.env.TWILIO_SMS_NUMBER || TWILIO_CONFIG.from).replace(/^whatsapp:/, "");
-  const params = new URLSearchParams({ To: toNumber, From: fromNumber, Body: body });
+  const params = new URLSearchParams({ To: to, From: TWILIO_CONFIG.from, Body: body });
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -36,73 +28,117 @@ export async function sendWhatsApp(to, body) {
   if (!res.ok) throw new Error(`Twilio error: ${result.message}`);
   return result;
 }
-async function composeWithAI(prompt, fallback) {
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5-20251001",
-        max_tokens: 300,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    const data = await res.json();
-    if (!data.content || !data.content[0]) {
-      console.error("composeWithAI: unexpected Anthropic response", JSON.stringify(data));
-      return fallback;
-    }
-    return data.content[0].text.trim();
-  } catch (err) {
-    console.error("composeWithAI failed, using fallback:", err.message);
-    return fallback;
+
+// ── Email via Resend ──────────────────────────────────────────────────────────
+// Add RESEND_API_KEY to your Vercel environment variables.
+export async function sendEmail({ to, subject, html, text }) {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("[email] RESEND_API_KEY not set — skipping email to", to);
+    return;
   }
-}
-// TRIGGER 0: New order created and ready for the technician to process
-// (e.g. pay-after-weigh residential orders, room/hotel-account charges — no
-// separate payment-confirmation step is needed before processing begins)
-export async function notifyNewOrderReady(order) {
-  const msg = await composeWithAI(
-    `You write concise WhatsApp notifications for Washwell Laundry Co., a premium hotel laundry service. No emojis. Write a message under 80 words for a technician: a new order is ready to process. Order: ${JSON.stringify({ number: order.orderNumber, guest: order.guestName, location: order.location, tier: order.tier, paymentMethod: order.paymentNote })}. Include the order number, guest name, location, tier, and payment method. Sign off "— Washwell".`,
-    `New order ready — ${order.orderNumber}\nGuest: ${order.guestName} | ${order.location}\nService: ${order.tier} | ${order.paymentNote}\n— Washwell`
-  );
-  await sendWhatsApp(TEAM.technician, msg);
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "Washwell Laundry Co. <noreply@washwellconcierge.com>",
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html,
+      text,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    console.error("[email] Resend error:", err);
+    // non-blocking — don't throw
+  }
+  return res.json().catch(() => null);
 }
 
-// TRIGGER 1: Guest or concierge confirms payment
-// → Technician + Manager receive WhatsApp
+async function composeWithAI(prompt) {
+  if (!process.env.ANTHROPIC_API_KEY) return prompt;
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-5-20251001",
+      max_tokens: 300,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  const data = await res.json();
+  return data?.content?.[0]?.text?.trim() || prompt;
+}
+
+// ── Notification triggers ─────────────────────────────────────────────────────
+
+// New order placed — notify technician for pickup
+export async function notifyNewOrderPickup(order) {
+  const msg = `New laundry order ready for pickup.\nOrder ${order.orderNumber} — ${order.guestName}${order.hotelName ? ` at ${order.hotelName}` : ""}${order.roomNumber ? `, Room ${order.roomNumber}` : ""}.\nPayment: ${order.paymentMethod}. Weigh on receipt and the payment link will auto-generate. — Washwell`;
+  try { await sendWhatsApp(TEAM.technician, msg); } catch (e) { console.error("WhatsApp technician:", e); }
+}
+
+// After technician weighs — email customer with Stripe payment link
+export async function notifyPaymentLinkReady({ to, firstName, orderNumber, tier, weightLbs, amount, stripeUrl }) {
+  const subject = `Your Washwell laundry is ready for payment — Order ${orderNumber}`;
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#f8f7f4;">
+      <img src="https://www.washwellconcierge.com/logo.png" alt="Washwell Laundry Co." style="height:60px;margin-bottom:24px;"/>
+      <h2 style="color:#0d0d0c;margin-bottom:8px;">Hi ${firstName},</h2>
+      <p style="color:#555;font-size:16px;">Your laundry has been received and weighed. Here are the details:</p>
+      <div style="background:white;border-radius:12px;padding:24px;margin:24px 0;border:2px solid #e5e5e3;">
+        <table style="width:100%;font-size:15px;color:#0d0d0c;">
+          <tr><td style="padding:6px 0;color:#888;">Order</td><td style="font-weight:bold;text-align:right;">${orderNumber}</td></tr>
+          <tr><td style="padding:6px 0;color:#888;">Service</td><td style="font-weight:bold;text-align:right;">${tier}</td></tr>
+          <tr><td style="padding:6px 0;color:#888;">Actual weight</td><td style="font-weight:bold;text-align:right;">${weightLbs} lbs</td></tr>
+          <tr style="border-top:2px solid #e5e5e3;">
+            <td style="padding:12px 0 6px;font-size:18px;font-weight:bold;">Total</td>
+            <td style="padding:12px 0 6px;font-size:22px;font-weight:bold;text-align:right;color:#00c419;">$${parseFloat(amount).toFixed(2)} CAD</td>
+          </tr>
+        </table>
+      </div>
+      <p style="color:#555;font-size:15px;">Click below to complete your payment securely. Your laundry will begin processing as soon as payment is received.</p>
+      <a href="${stripeUrl}" style="display:inline-block;background:#00c419;color:white;font-weight:bold;font-size:16px;padding:16px 40px;border-radius:12px;text-decoration:none;margin:16px 0;">Pay Now — $${parseFloat(amount).toFixed(2)} CAD</a>
+      <p style="color:#888;font-size:13px;margin-top:32px;">Questions? Reply to this email or contact your hotel concierge.<br/>— Washwell Laundry Co.</p>
+    </div>`;
+  const text = `Hi ${firstName},\n\nYour laundry (Order ${orderNumber}) has been weighed at ${weightLbs} lbs.\nTotal: $${parseFloat(amount).toFixed(2)} CAD\nService: ${tier}\n\nPay here: ${stripeUrl}\n\nYour laundry will be processed as soon as payment is received.\n— Washwell Laundry Co.`;
+  try { await sendEmail({ to, subject, html, text }); } catch (e) { console.error("Email payment link:", e); }
+}
+
+// Payment confirmed (Stripe webhook) — notify technician to start
 export async function notifyPaymentConfirmed(order) {
   const msg = await composeWithAI(
-    `You write concise WhatsApp notifications for Washwell Laundry Co., a premium hotel laundry service. No emojis. Write a message under 80 words for a technician: a new paid order is ready to process. Order: ${JSON.stringify({ number: order.orderNumber, guest: order.guestName, room: order.roomNumber, hotel: order.hotelName || "Residential / Direct", amount: order.totalAmount, method: order.paymentNote || "Stripe" })}. Include order number, guest name, room, payment method. Sign off "— Washwell".`,
-    `Payment confirmed — ${order.orderNumber}\nGuest: ${order.guestName}, Room ${order.roomNumber}\n$${order.totalAmount} via ${order.paymentNote || "Stripe"}\n— Washwell`
-  );
-  await sendWhatsApp(TEAM.technician, msg);
-  await sendWhatsApp(TEAM.manager, `Payment received — Order ${order.orderNumber} | $${order.totalAmount} | ${order.guestName}, Room ${order.roomNumber} | ${new Date().toLocaleTimeString()} — Washwell`);
+    `Write a concise WhatsApp notification under 80 words for a technician at Washwell Laundry Co. No emojis. A payment has been received and the order is ready to wash. Details: ${JSON.stringify({ orderNumber: order.orderNumber, guest: order.guestName, room: order.roomNumber || "N/A", hotel: order.hotelName || "Residential / Direct", amount: order.totalAmount })}. Include order number, guest, location, amount. Sign off "— Washwell".`
+  ).catch(() => `Payment received — Order ${order.orderNumber} is ready to process. ${order.guestName}${order.roomNumber ? ` Room ${order.roomNumber}` : ""}. $${order.totalAmount} — Washwell`);
+  try { await sendWhatsApp(TEAM.technician, msg); } catch (e) { console.error("WhatsApp:", e); }
+  try { await sendWhatsApp(TEAM.manager, `Payment received — Order ${order.orderNumber} | $${order.totalAmount} | ${order.guestName} — Washwell`); } catch (e) { console.error("WhatsApp:", e); }
 }
-// TRIGGER 2: Concierge requests Burq pickup
-// → Concierge receives confirmation WhatsApp
+
+// Burq driver assigned
 export async function notifyPickupRequested(order, burqJob) {
   const msg = await composeWithAI(
-    `Write a short WhatsApp confirmation under 70 words for a concierge at Washwell Laundry Co. No emojis. A Burq driver has been requested. Details: ${JSON.stringify({ order: order.orderNumber, guest: order.guestName, room: order.roomNumber, jobId: burqJob.burq_job_id, eta: burqJob.estimated_delivery_time })}. Sign off "— Washwell".`,
-    `Driver requested — ${order.orderNumber}\nGuest: ${order.guestName}, Room ${order.roomNumber}\nETA: ${burqJob.estimated_delivery_time}\n— Washwell`
-  );
-  await sendWhatsApp(TEAM.concierge, msg);
+    `Write a short WhatsApp confirmation under 70 words for a concierge at Washwell Laundry Co. No emojis. A Burq driver has been requested. Details: ${JSON.stringify({ order: order.orderNumber, guest: order.guestName, room: order.roomNumber, jobId: burqJob.burq_job_id, eta: burqJob.estimated_delivery_time })}. Sign off "— Washwell".`
+  ).catch(() => `Driver requested for Order ${order.orderNumber}. Job ${burqJob.burq_job_id} — Washwell`);
+  try { await sendWhatsApp(TEAM.concierge, msg); } catch (e) { console.error("WhatsApp:", e); }
 }
-// TRIGGER 3: Burq driver accepts the job
-// → Concierge receives driver details
+
 export async function notifyDriverAssigned(order, driver) {
   const msg = await composeWithAI(
-    `Write a short WhatsApp message under 70 words for a concierge at Washwell Laundry Co. No emojis. A driver has been assigned. Details: ${JSON.stringify({ order: order.orderNumber, driver: driver.name, phone: driver.phone, vehicle: driver.vehicle, eta: driver.estimatedPickup })}. Sign off "— Washwell".`,
-    `Driver assigned — ${order.orderNumber}\nDriver: ${driver.name} | ${driver.phone}\nETA: ${driver.estimatedPickup}\n— Washwell`
-  );
-  await sendWhatsApp(TEAM.concierge, msg);
+    `Write a short WhatsApp message under 70 words for a concierge at Washwell Laundry Co. No emojis. A driver has been assigned. Details: ${JSON.stringify({ order: order.orderNumber, driver: driver.name, phone: driver.phone, vehicle: driver.vehicle, eta: driver.estimatedPickup })}. Sign off "— Washwell".`
+  ).catch(() => `Driver ${driver.name} assigned for Order ${order.orderNumber} — Washwell`);
+  try { await sendWhatsApp(TEAM.concierge, msg); } catch (e) { console.error("WhatsApp:", e); }
 }
-// TRIGGER 4: Technician marks order completed
-// → Manager receives sustainability summary + WhatsApp
+
 export async function notifyOrderCompleted(order, metrics) {
   const msg = await composeWithAI(
-    `Write a short WhatsApp order summary under 80 words for the Washwell Laundry Co. manager. No emojis. Order complete. Details: ${JSON.stringify({ order: order.orderNumber, guest: order.guestName, weight: order.totalWeightLbs, waterSaved: metrics.water_saved_gallons, energySaved: metrics.energy_saved_kwh })}. Include sustainability numbers. Sign off "— Washwell".`,
-    `Order complete — ${order.orderNumber}\nGuest: ${order.guestName} | ${order.totalWeightLbs}lbs\nWater saved: ${metrics.water_saved_gallons}gal | Energy: ${metrics.energy_saved_kwh}kWh\n— Washwell`
-  );
-  await sendWhatsApp(TEAM.manager, msg);
+    `Write a short WhatsApp order summary under 80 words for the Washwell Laundry Co. manager. No emojis. Order complete. Details: ${JSON.stringify({ order: order.orderNumber, guest: order.guestName, weight: order.totalWeightLbs, waterSaved: metrics.water_saved_gallons, energySaved: metrics.energy_saved_kwh })}. Include sustainability numbers. Sign off "— Washwell".`
+  ).catch(() => `Order ${order.orderNumber} complete. ${order.totalWeightLbs} lbs. Water: ${metrics.water_saved_gallons}gal, Energy: ${metrics.energy_saved_kwh}kWh — Washwell`);
+  try { await sendWhatsApp(TEAM.manager, msg); } catch (e) { console.error("WhatsApp:", e); }
 }
