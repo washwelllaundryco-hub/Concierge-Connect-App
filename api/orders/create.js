@@ -72,7 +72,7 @@ export default async function handler(req, res) {
     `;
     const order = orderResult.rows[0];
 
-    // Notify technician (non-blocking — don't let this fail the order creation)
+    // Notify technician (non-blocking)
     notifyNewOrderPickup({
       orderNumber,
       guestName: `${g.first_name} ${g.last_name}`,
