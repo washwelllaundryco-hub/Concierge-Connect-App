@@ -285,7 +285,7 @@ export default function TechnicianDashboard() {
                       )}
 
                       {/* Cancel order */}
-                      {["pending_pickup", "awaiting_payment"].includes(order.status) && (
+                      {!["completed","delivered","cancelled"].includes(order.status) && (
                         confirmCancelId === order.id ? (
                           <div className="flex gap-2">
                             <button onClick={() => handleDelete(order.id)}
