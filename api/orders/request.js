@@ -1,6 +1,4 @@
 // POST /api/orders/request — called by ConciergePortal
-// hotelId from Clerk publicMetadata is a SLUG (e.g. "the-hotel"), not a UUID.
-// Must resolve to hotels.id (UUID) before any DB writes.
 import { sql } from "@vercel/postgres";
 import { notifyNewOrderPickup } from "../../src/lib/notifications.js";
 
@@ -14,7 +12,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Resolve hotel slug → real UUID + name
+    // 1. Resolve hotel slug → UUID + name
     const hotelResult = await sql`
       SELECT id, name FROM hotels WHERE slug = ${hotelSlug} LIMIT 1
     `;
@@ -24,7 +22,7 @@ export default async function handler(req, res) {
     const hotelUUID = hotelResult.rows[0].id;
     const hotelName = hotelResult.rows[0].name;
 
-    // 2. Try to find the guest by hotel UUID + room number
+    // 2. Try to find guest by hotel + room (non-fatal if not found)
     let guestId        = null;
     let guestFirstName = firstName || "Guest";
     let guestLastName  = lastName  || "";
@@ -76,17 +74,24 @@ export default async function handler(req, res) {
     `;
     const order = orderResult.rows[0];
 
-    // 5. Notify technician (non-blocking)
-    notifyNewOrderPickup({
-      orderNumber,
-      guestName: `${guestFirstName} ${guestLastName}`.trim(),
-      roomNumber: String(roomNumber),
-      hotelName,
-      paymentNote: paymentMethod === "room_charge"   ? "Room charge"   :
-                   paymentMethod === "hotel_account" ? "Hotel account" :
-                   paymentMethod === "cash"          ? "Cash"          :
-                                                       "Stripe (pay after weigh)",
-    }).catch(e => console.error("notifyNewOrderPickup failed:", e.message));
+    // 5. Notify technician — BLOCKING (await before res.json so Vercel
+    //    doesn't kill the function before Twilio call completes).
+    //    Wrapped in try/catch so a failed text never blocks the order.
+    try {
+      await notifyNewOrderPickup({
+        orderNumber,
+        guestName: `${guestFirstName} ${guestLastName}`.trim(),
+        roomNumber: String(roomNumber),
+        hotelName,
+        paymentNote: paymentMethod === "room_charge"   ? "Room charge"   :
+                     paymentMethod === "hotel_account" ? "Hotel account" :
+                     paymentMethod === "cash"          ? "Cash"          :
+                                                         "Stripe (pay after weigh)",
+      });
+      console.log("WhatsApp sent for", orderNumber);
+    } catch (e) {
+      console.error("notifyNewOrderPickup failed:", e.message);
+    }
 
     res.json({ success: true, orderId: order.id, orderNumber, status: "pending_pickup" });
 
