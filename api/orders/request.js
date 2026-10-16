@@ -1,32 +1,41 @@
 // POST /api/orders/request — called by ConciergePortal
-// Looks up guest by hotel + room, creates order, notifies technician.
+// hotelId from Clerk publicMetadata is a SLUG (e.g. "the-hotel"), not a UUID.
+// Must resolve to hotels.id (UUID) before any DB writes.
 import { sql } from "@vercel/postgres";
 import { notifyNewOrderPickup } from "../../src/lib/notifications.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const { firstName, lastName, roomNumber, tier, hotelId, paymentMethod, specialInstructions } = req.body;
+  const { firstName, lastName, roomNumber, tier, hotelId: hotelSlug, paymentMethod, specialInstructions } = req.body;
 
-  if (!hotelId || !roomNumber) {
+  if (!hotelSlug || !roomNumber) {
     return res.status(400).json({ error: "hotelId and roomNumber required" });
   }
 
   try {
-    // Look up guest by hotel + room (no ORDER BY created_at — may not exist)
-    let guestId = null;
+    // 1. Resolve hotel slug → real UUID + name
+    const hotelResult = await sql`
+      SELECT id, name FROM hotels WHERE slug = ${hotelSlug} LIMIT 1
+    `;
+    if (!hotelResult.rows.length) {
+      return res.status(404).json({ error: `Hotel not found for slug: ${hotelSlug}` });
+    }
+    const hotelUUID = hotelResult.rows[0].id;
+    const hotelName = hotelResult.rows[0].name;
+
+    // 2. Try to find the guest by hotel UUID + room number
+    let guestId        = null;
     let guestFirstName = firstName || "Guest";
     let guestLastName  = lastName  || "";
     let guestEmail     = null;
-    let hotelName      = "Hotel";
 
     try {
       const guestResult = await sql`
-        SELECT hg.id, u.first_name, u.last_name, u.email, h.name AS hotel_name
+        SELECT hg.id, u.first_name, u.last_name, u.email
         FROM hotel_guests hg
         INNER JOIN users u ON hg.user_id = u.id
-        INNER JOIN hotels h ON hg.hotel_id = h.id
-        WHERE hg.hotel_id    = ${hotelId}
+        WHERE hg.hotel_id    = ${hotelUUID}
           AND hg.room_number = ${String(roomNumber)}
         LIMIT 1
       `;
@@ -36,24 +45,16 @@ export default async function handler(req, res) {
         guestFirstName = g.first_name;
         guestLastName  = g.last_name;
         guestEmail     = g.email;
-        hotelName      = g.hotel_name;
       }
     } catch (guestErr) {
-      // Guest lookup failed — log it but continue without a guestId
-      console.error("Guest lookup error (non-fatal):", guestErr.message);
+      console.error("Guest lookup (non-fatal):", guestErr.message);
     }
 
-    // If we still don't have the hotel name, try fetching it separately
-    if (hotelName === "Hotel") {
-      try {
-        const hotelResult = await sql`SELECT name FROM hotels WHERE id = ${hotelId}`;
-        if (hotelResult.rows.length > 0) hotelName = hotelResult.rows[0].name;
-      } catch (e) { /* ignore */ }
-    }
-
+    // 3. Generate order number
     const seqResult = await sql`SELECT nextval('order_number_seq') AS n`;
     const orderNumber = `WW-${String(seqResult.rows[0].n).padStart(5, "0")}`;
 
+    // 4. Insert order
     const orderResult = await sql`
       INSERT INTO laundry_orders
         (order_number, guest_id, hotel_id, placed_by,
@@ -62,7 +63,7 @@ export default async function handler(req, res) {
       VALUES
         (${orderNumber},
          ${guestId},
-         ${hotelId},
+         ${hotelUUID},
          'concierge',
          ${paymentMethod || "stripe"},
          false,
@@ -75,7 +76,7 @@ export default async function handler(req, res) {
     `;
     const order = orderResult.rows[0];
 
-    // Notify technician (non-blocking — never fails the order creation)
+    // 5. Notify technician (non-blocking)
     notifyNewOrderPickup({
       orderNumber,
       guestName: `${guestFirstName} ${guestLastName}`.trim(),
@@ -90,7 +91,7 @@ export default async function handler(req, res) {
     res.json({ success: true, orderId: order.id, orderNumber, status: "pending_pickup" });
 
   } catch (err) {
-    console.error("request.js fatal error:", err.message, err.stack);
+    console.error("request.js fatal error:", err.message);
     res.status(500).json({ error: "Failed to create order", detail: err.message });
   }
 }
