@@ -103,45 +103,27 @@ export default function ConciergePortal() {
   const handleNewOrderSubmit = async () => {
     if (!newOrder.firstName || !newOrder.roomNumber) return;
     setSubmitting(true);
-    const tier     = PRICING_TIERS[newOrder.tier];
-    const isStripe = newOrder.paymentMethod === "stripe";
     try {
       const token = await getToken();
-      const res = await fetch("/api/orders/create", {
+      const res = await fetch("/api/orders/request", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          firstName:     newOrder.firstName,
-          lastName:      newOrder.lastName,
-          roomNumber:    newOrder.roomNumber,
-          tier:          newOrder.tier,
-          paymentMethod: newOrder.paymentMethod,
-          hotelId,
-          placedByUserId: user.id,
-        }),
+        body: JSON.stringify({ ...newOrder, hotelId, paymentMethod: "stripe" }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (isStripe) {
-          setStripeLink({
-            url: `${tier.stripeUrl}?client_reference_id=${data.orderId}`,
-            orderNumber: data.orderNumber,
-          });
-        } else {
-          const label = PAYMENT_METHODS.find((m) => m.value === newOrder.paymentMethod)?.label;
-          setSuccessMsg(`Order placed — ${label}. Technician has been notified.`);
-          setTimeout(() => setSuccessMsg(""), 6000);
-        }
+      const data = await res.json();
+      if (data.success) {
+        setShowNewOrder(false);
+        setNewOrder({ firstName: "", lastName: "", roomNumber: "", tier: "Standard Load" });
+        alert(`Order ${data.orderNumber} placed! The technician has been notified. A payment link will be emailed to the guest after their laundry is weighed.`);
       } else {
-        console.error("Create order failed:", await res.text());
+        alert("Failed to place order: " + (data.error || "Unknown error"));
       }
     } catch (err) {
       console.error("Create order error:", err);
+      alert("Failed to place order. Please try again.");
     } finally {
       setSubmitting(false);
     }
-    setShowNewOrder(false);
-    setNewOrder({ firstName: "", lastName: "", roomNumber: "", tier: "Standard Load", paymentMethod: "stripe" });
   };
 
   const handleGetUpgradeLink = async (order) => {
