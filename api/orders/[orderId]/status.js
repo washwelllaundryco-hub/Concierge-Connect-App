@@ -1,83 +1,59 @@
-// PATCH /api/orders/[orderId]/status
-// Handles two actions in one endpoint (keeps us at ≤12 serverless functions):
-//   1. Status update: body has { status, weight?, balanceDue?, correctTier? }
-//   2. Machine assignment: body has { machineType: "washer"|"dryer", machineNumber: number }
-import { sql } from "@vercel/postgres";
+// PATCH /api/orders/[id]/status
+// Manual status advances by technician (in_wash → drying → folding → completed).
+// Weight logging and initial payment generation handled by /api/orders/[id]/weigh.
+import { db } from "../../_db.js";
+
+const STATUS_LABELS = {
+  in_wash:          "being washed",
+  drying:           "in the dryer",
+  folding:          "being folded",
+  out_for_delivery: "out for delivery",
+  completed:        "ready for delivery",
+};
 
 export default async function handler(req, res) {
   if (req.method !== "PATCH") return res.status(405).end();
 
-  const { orderId } = req.query;
-  const { status, weight, balanceDue, correctTier, machineType, machineNumber } = req.body;
+  const { id: orderId } = req.query;
+  const { status } = req.body;
+  const technicianId = req.headers["x-technician-id"] || "tech-unknown";
 
-  // ── Machine assignment mode ────────────────────────────────────────────────
-  if (machineType) {
-    if (!["washer", "dryer"].includes(machineType)) {
-      return res.status(400).json({ error: "machineType must be washer or dryer" });
-    }
-    try {
-      const column = machineType === "washer" ? "washer_machine_number" : "dryer_machine_number";
-      await sql.query(
-        `UPDATE laundry_orders SET ${column} = $1, updated_at = NOW() WHERE id = $2`,
-        [machineNumber, orderId]
-      );
-      await sql`
-        INSERT INTO audit_logs (order_id, action, entity_type, payload_after, created_at)
-        VALUES (${orderId}, ${machineType + "_assigned"}, 'laundry_order',
-                ${JSON.stringify({ machineType, machineNumber })}, NOW())
-      `;
-      return res.json({ success: true, orderId, machineType, machineNumber });
-    } catch (err) {
-      console.error(err);
-      return res.status(500).json({ error: "Failed to assign machine" });
-    }
-  }
-
-  // ── Status update mode ────────────────────────────────────────────────────
-  const VALID = [
-    "in_wash", "drying", "folding", "bagged",
-    "out_for_delivery", "completed", "cancelled", "awaiting_payment",
-  ];
+  const VALID = ["in_wash", "drying", "folding", "out_for_delivery", "completed", "cancelled"];
   if (!VALID.includes(status)) {
-    return res.status(400).json({ error: "Invalid status" });
+    return res.status(400).json({ error: `Invalid status: ${status}` });
   }
 
   try {
-    const prev = await sql`SELECT status FROM laundry_orders WHERE id = ${orderId}`;
-    if (!prev.rows.length) return res.status(404).json({ error: "Order not found" });
-    const fromStatus = prev.rows[0].status;
+    const current = await db.query(
+      `SELECT status FROM laundry_orders WHERE id = $1`,
+      [orderId]
+    );
+    if (!current.rows.length) return res.status(404).json({ error: "Order not found" });
+    const fromStatus = current.rows[0].status;
 
-    if (weight) {
-      await sql`
-        UPDATE laundry_orders
-        SET status = ${status}, total_weight_lbs = ${weight}, updated_at = NOW()
-        WHERE id = ${orderId}
-      `;
-    } else {
-      await sql`
-        UPDATE laundry_orders
-        SET status = ${status}, updated_at = NOW()
-        WHERE id = ${orderId}
-      `;
-    }
+    const tsField = `${status}_at`;
+    await db.query(
+      `UPDATE laundry_orders SET status = $1, ${tsField} = NOW(), updated_at = NOW() WHERE id = $2`,
+      [status, orderId]
+    );
 
-    // Hotel tier overage — store balance due
-    if (balanceDue && parseFloat(balanceDue) > 0 && correctTier) {
-      await sql`
-        UPDATE laundry_orders
-        SET balance_due = ${parseFloat(balanceDue)}, correct_tier = ${correctTier}
-        WHERE id = ${orderId}
-      `;
-    }
+    await db.query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, changed_at)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [orderId, fromStatus, status, technicianId]
+    );
 
-    await sql`
-      INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, changed_at)
-      VALUES (${orderId}, ${fromStatus}, ${status}, 'technician', NOW())
-    `;
+    // Push notification to guest
+    await db.query(
+      `INSERT INTO notifications (user_id, order_id, type, channel, title, message, sent_at)
+       SELECT guest_id, $1, 'status_update', 'push', 'Order Update', $2, NOW()
+       FROM laundry_orders WHERE id = $1`,
+      [orderId, `Your laundry is now ${STATUS_LABELS[status] || status}`]
+    ).catch(() => {});
 
     res.json({ success: true, orderId, status });
   } catch (err) {
-    console.error(err);
+    console.error("status update error:", err);
     res.status(500).json({ error: "Failed to update status" });
   }
 }
