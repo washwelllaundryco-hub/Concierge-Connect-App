@@ -1,109 +1,90 @@
 // POST /api/orders/create
-// Concierge places order for hotel guest (sends guestId).
-// Guest self-service sends userId instead.
-// All orders start as pending_pickup — payment link generated AFTER weighing.
+// Concierge places an order on behalf of a guest.
+// ALL orders → status: pending_pickup, notify technician via WhatsApp.
+// Stripe payment link is sent after weighing (via /api/orders/[orderId]/weigh).
 import { sql } from "@vercel/postgres";
 import { notifyNewOrderPickup } from "../../src/lib/notifications.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
-  const {
-    guestId,
-    userId,
-    placedByUserId,
-    paymentMethod = "stripe",
-    specialInstructions,
-    tier        = "Standard Load",
-    serviceType = "Regular Load",
-    email,
-  } = req.body;
+  const { guestId, userId, placedByUserId, paymentMethod, tier, serviceType, email, specialInstructions } = req.body;
 
   try {
+    let g;
+    if (guestId) {
+      // Concierge flow — look up from hotel_guests
+      const guest = await sql`
+        SELECT hg.id, hg.room_number, hg.hotel_id,
+               u.first_name, u.last_name, u.email, u.phone,
+               h.name as hotel_name
+        FROM hotel_guests hg
+        INNER JOIN users u ON hg.user_id = u.id
+        INNER JOIN hotels h ON hg.hotel_id = h.id
+        WHERE hg.id = ${guestId}
+      `;
+      if (!guest.rows.length) return res.status(404).json({ error: "Guest not found" });
+      g = guest.rows[0];
+    } else if (userId) {
+      // Self-service guest flow
+      const user = await sql`
+        SELECT id, first_name, last_name, email, phone FROM users WHERE clerk_id = ${userId}
+      `;
+      if (!user.rows.length) return res.status(404).json({ error: "User not found" });
+      const u = user.rows[0];
+      g = {
+        id: null,
+        room_number: null,
+        hotel_id: null,
+        hotel_name: "Residential",
+        first_name: u.first_name,
+        last_name: u.last_name,
+        email: email || u.email,
+        phone: u.phone,
+      };
+    } else {
+      return res.status(400).json({ error: "guestId or userId required" });
+    }
+
     const seqResult = await sql`SELECT nextval('order_number_seq') AS n`;
     const orderNumber = `WW-${String(seqResult.rows[0].n).padStart(5, "0")}`;
-
-    let resolvedGuestId = guestId || null;
-    let guestEmail      = email   || null;
-    let guestFirstName  = "";
-    let guestLastName   = "";
-    let hotelName       = null;
-    let roomNumber      = null;
-    let hotelId         = null;
-
-    if (resolvedGuestId) {
-      // Concierge flow — lookup by guestId
-      const g = await sql`
-        SELECT hg.id, hg.hotel_id, hg.room_number,
-               u.first_name, u.last_name, u.email,
-               h.name AS hotel_name
-        FROM hotel_guests hg
-        JOIN users u ON hg.user_id = u.id
-        JOIN hotels h ON hg.hotel_id = h.id
-        WHERE hg.id = ${resolvedGuestId}
-      `;
-      if (g.rows.length) {
-        const row = g.rows[0];
-        hotelId        = row.hotel_id;
-        roomNumber     = row.room_number;
-        guestEmail     = row.email || guestEmail;
-        guestFirstName = row.first_name;
-        guestLastName  = row.last_name;
-        hotelName      = row.hotel_name;
-      }
-    } else if (userId) {
-      // Guest self-service — lookup by Clerk userId
-      const u = await sql`
-        SELECT u.id, u.email, u.first_name, u.last_name,
-               hg.id AS guest_id, hg.hotel_id, hg.room_number, h.name AS hotel_name
-        FROM users u
-        LEFT JOIN hotel_guests hg ON hg.user_id = u.id
-        LEFT JOIN hotels h ON hg.hotel_id = h.id
-        WHERE u.clerk_user_id = ${userId}
-        LIMIT 1
-      `;
-      if (u.rows.length) {
-        const row = u.rows[0];
-        resolvedGuestId = row.guest_id;
-        hotelId         = row.hotel_id;
-        roomNumber      = row.room_number;
-        guestEmail      = row.email || guestEmail;
-        guestFirstName  = row.first_name;
-        guestLastName   = row.last_name;
-        hotelName       = row.hotel_name;
-      }
-    }
 
     const orderResult = await sql`
       INSERT INTO laundry_orders
         (order_number, guest_id, hotel_id, placed_by, placed_by_user_id,
          payment_method, payment_verified, status,
-         tier, service_type, special_instructions, guest_email, created_at)
+         tier, service_type, guest_email,
+         special_instructions, created_at)
       VALUES
-        (${orderNumber}, ${resolvedGuestId}, ${hotelId},
-         ${placedByUserId ? 'concierge' : 'guest'}, ${placedByUserId || null},
-         ${paymentMethod}, false, 'pending_pickup',
-         ${tier}, ${serviceType}, ${specialInstructions || null}, ${guestEmail}, NOW())
+        (${orderNumber},
+         ${g.id || null},
+         ${g.hotel_id || null},
+         ${guestId ? "concierge" : "self"},
+         ${placedByUserId || userId || null},
+         ${paymentMethod || "stripe"},
+         false,
+         'pending_pickup',
+         ${tier || null},
+         ${serviceType || null},
+         ${g.email || email || null},
+         ${specialInstructions || null},
+         NOW())
       RETURNING id, order_number
     `;
     const order = orderResult.rows[0];
 
-    // Notify technician of new pickup (non-blocking)
+    // Notify technician (non-blocking — don't let this fail the order creation)
     notifyNewOrderPickup({
       orderNumber,
-      guestName: `${guestFirstName} ${guestLastName}`.trim() || "Guest",
-      hotelName,
-      roomNumber,
-      paymentMethod,
-    }).catch(e => console.error("notifyNewOrderPickup:", e));
+      guestName: `${g.first_name} ${g.last_name}`,
+      roomNumber: g.room_number,
+      hotelName: g.hotel_name,
+      paymentMethod: paymentMethod || "stripe",
+      paymentNote: paymentMethod === "room_charge" ? "Room charge" :
+                   paymentMethod === "hotel_account" ? "Hotel account" :
+                   paymentMethod === "cash" ? "Cash" : "Stripe (pay after weigh)",
+    }).catch(e => console.error("notifyNewOrderPickup failed:", e.message));
 
-    res.json({
-      success:     true,
-      orderId:     order.id,
-      orderNumber: order.order_number,
-      status:      "pending_pickup",
-      paymentMethod,
-      message:     "Order placed. Payment link will be sent after we weigh your laundry.",
-    });
+    res.json({ success: true, orderId: order.id, orderNumber, status: "pending_pickup", paymentMethod });
   } catch (err) {
     console.error("create order error:", err);
     res.status(500).json({ error: "Failed to create order" });
