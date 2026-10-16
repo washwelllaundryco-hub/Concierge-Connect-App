@@ -240,7 +240,7 @@ export default function TechnicianDashboard() {
                       )}
 
                       {/* Machine inputs */}
-                      {["in_wash", "drying", "folding"].includes(order.status) && (
+                      {!["completed","delivered","cancelled"].includes(order.status) && (
                         <div className="mb-4 grid grid-cols-2 gap-3">
                           {["washer", "dryer"].map(type => {
                             const key    = `${order.id}_${type}`;
