@@ -12,7 +12,13 @@ const STATUS_BADGE = {
   delivered:        { label: "Delivered",        color: "bg-green-600 text-white" },
   cancelled:        { label: "Cancelled",        color: "bg-red-100 text-red-700" },
 };
-const TIERS = ["Essential Load","Standard Load","Premium Load","Executive Load","Bulk Service"];
+const TIERS = [
+  { name: "Essential Load", label: "Essential Load — up to 15 lbs ($68)",  price: 68  },
+  { name: "Standard Load",  label: "Standard Load — up to 30 lbs ($88)",   price: 88  },
+  { name: "Premium Load",   label: "Premium Load — up to 50 lbs ($128)",   price: 128 },
+  { name: "Executive Load", label: "Executive Load — up to 75 lbs ($188)", price: 188 },
+  { name: "Bulk Service",   label: "Bulk Service — 75+ lbs ($245)",        price: 245 },
+];
 
 export default function ConciergePortal() {
   const { user } = useUser();
@@ -61,7 +67,9 @@ export default function ConciergePortal() {
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ ...form, hotelId, hotelName, placedBy: "concierge" }),
       });
-      const d = await res.json();
+      const text = await res.text();
+      let d = {};
+      try { d = JSON.parse(text); } catch { d = { error: text || "Server error" }; }
       if (!res.ok) { alert(d.error || "Failed to place order."); return; }
       setShowNew(false);
       setForm({ firstName:"", lastName:"", phone:"", email:"", roomNumber:"", tier:"Standard Load", specialInstructions:"" });
@@ -106,8 +114,7 @@ export default function ConciergePortal() {
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Active Orders</h2>
         {loading ? <p className="text-gray-400 text-sm">Loading…</p> : orders.length===0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">
-            <p className="text-4xl mb-3">🧺</p>
-            <p>No active orders. Click "+ New Order" to get started.</p>
+            <p className="text-sm text-gray-400">No active orders. Click "+ New Order" to get started.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -159,7 +166,7 @@ export default function ConciergePortal() {
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Service Tier</label>
                 <select value={form.tier} onChange={e=>setForm(p=>({...p,tier:e.target.value}))} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
-                  {TIERS.map(t=><option key={t}>{t}</option>)}
+                  {TIERS.map(t=><option key={t.name} value={t.name}>{t.label}</option>)}
                 </select>
                 <p className="text-xs text-gray-400 mt-1">Technician will confirm exact tier after weighing the laundry</p>
               </div>
