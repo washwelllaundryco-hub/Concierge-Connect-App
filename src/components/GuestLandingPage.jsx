@@ -9,7 +9,6 @@ const TIERS = [
   { name: "Executive Load", maxLbs: 75,  price: 188, description: "Up to 75 lbs" },
   { name: "Bulk Service",   maxLbs: 999, price: 245, description: "75+ lbs" },
 ];
-const DELIVERY_FEE = 20;
 
 export default function GuestLandingPage() {
   const { user, isLoaded } = useUser();
@@ -88,15 +87,14 @@ export default function GuestLandingPage() {
                 </div>
                 <div className="text-right ml-4">
                   <p className="text-xl font-bold text-washwell-green">${t.price} <span className="text-sm font-normal text-washwell-gray">CAD</span></p>
-                  <p className="text-xs text-washwell-gray">+${DELIVERY_FEE} delivery</p>
-                  <p className="text-xs font-semibold text-washwell-gray-dark">Total ~${t.price + DELIVERY_FEE}</p>
+                  <p className="text-xs text-washwell-gray">delivery included</p>
                 </div>
               </div>
             </button>
           ))}
         </div>
 
-        <p className="text-xs text-washwell-gray text-center">Final tier confirmed by technician after weighing. Payment via SMS link — no upfront charge.</p>
+        <p className="text-xs text-washwell-gray text-center">Prices include delivery. Taxes not included. Final tier confirmed after weighing. Payment via SMS — no upfront charge.</p>
         <button onClick={() => signOut()} className="mt-8 block mx-auto text-xs text-washwell-gray hover:text-washwell-gray-dark">Sign out</button>
       </div>
     </div>
@@ -105,9 +103,7 @@ export default function GuestLandingPage() {
   return (
     <div className="min-h-screen bg-washwell-cream font-body flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-lg max-w-md w-full p-6 border border-washwell-gray-light">
-        <button onClick={() => setStep("select")} className="text-sm text-washwell-gray hover:text-washwell-gray-dark mb-4 flex items-center gap-1">
-          ← Back
-        </button>
+        <button onClick={() => setStep("select")} className="text-sm text-washwell-gray hover:text-washwell-gray-dark mb-4">← Back</button>
         <h2 className="text-xl font-bold text-washwell-black mb-1">Confirm Your Request</h2>
 
         {/* Selected tier summary */}
@@ -117,13 +113,10 @@ export default function GuestLandingPage() {
               <p className="font-bold text-washwell-black">{selectedTier?.name}</p>
               <p className="text-sm text-washwell-gray-dark">{selectedTier?.description}</p>
             </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-washwell-green">${selectedTier?.price} CAD</p>
-              <p className="text-xs text-washwell-gray">+${DELIVERY_FEE} delivery</p>
-            </div>
+            <p className="text-lg font-bold text-washwell-green ml-4">${selectedTier?.price} CAD</p>
           </div>
           <p className="text-xs text-washwell-gray-dark mt-2 pt-2 border-t border-washwell-green/20">
-            Estimated total <strong className="text-washwell-black">${(selectedTier?.price||0) + DELIVERY_FEE} CAD</strong> · confirmed after weighing · payment via SMS
+            Delivery included · taxes not included · payment link sent via SMS after weighing
           </p>
         </div>
 
