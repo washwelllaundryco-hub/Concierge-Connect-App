@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useUser, useAuth, useClerk } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
 
-const TIERS = [
-  { name: "Essential Load", maxLbs: 15,  price: 68,  description: "Up to 15 lbs" },
-  { name: "Standard Load",  maxLbs: 30,  price: 88,  description: "Up to 30 lbs" },
-  { name: "Premium Load",   maxLbs: 50,  price: 128, description: "Up to 50 lbs" },
-  { name: "Executive Load", maxLbs: 75,  price: 188, description: "Up to 75 lbs" },
-  { name: "Bulk Service",   maxLbs: 999, price: 245, description: "75+ lbs" },
+const TYPES = [
+  { name: "Clothing",             rate: 2.75, description: "Everyday garments & apparel" },
+  { name: "Mixed Bag",            rate: 2.85, description: "Towels, sheets & mixed items" },
+  { name: "Bedding",              rate: 3.00, description: "Duvets, comforters & pillowcases" },
+  { name: "Mats & Washable Rugs", rate: 3.25, description: "Bath mats, area & washable rugs" },
 ];
+const BASE_PRICE = 49;
+const BASE_LBS   = 15;
 
 export default function GuestLandingPage() {
   const { user, isLoaded } = useUser();
@@ -66,35 +67,36 @@ export default function GuestLandingPage() {
       <div className="max-w-lg mx-auto px-4 pt-10 pb-20">
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-washwell-green rounded-2xl mb-4 shadow-washwell-green">
-            <span className="text-3xl">🧺</span>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-washwell-green rounded-2xl mb-4">
+            <span className="text-white font-bold text-xl font-display">W</span>
           </div>
           <h1 className="text-3xl font-display font-bold text-washwell-black">Washwell Concierge</h1>
           {hotelName && <p className="text-washwell-gray-dark mt-1 text-sm font-medium">{hotelName}</p>}
           <p className="text-washwell-gray mt-1 text-sm">Hello, {firstName}! Choose your laundry service below.</p>
         </div>
 
-        <h2 className="text-sm font-semibold text-washwell-gray-dark uppercase tracking-wider mb-3">Select Service Tier</h2>
+        <h2 className="text-sm font-semibold text-washwell-gray-dark uppercase tracking-wider mb-1">Select Item Type</h2>
+        <p className="text-xs text-washwell-gray mb-3">${BASE_PRICE} CAD for the first {BASE_LBS} lbs · per-lb rate applies after</p>
 
         <div className="space-y-3 mb-6">
-          {TIERS.map(t => (
+          {TYPES.map(t => (
             <button key={t.name} onClick={() => { setSelectedTier(t); setStep("confirm"); }}
               className="w-full text-left bg-white rounded-2xl border-2 border-washwell-gray-light hover:border-washwell-green active:scale-[0.99] p-4 shadow-sm transition-all group">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-washwell-black text-base group-hover:text-washwell-green-dark transition-colors font-display">{t.description}</p>
-                  <p className="text-xs text-washwell-gray mt-0.5 font-medium uppercase tracking-wide">{t.name}</p>
+                  <p className="font-bold text-washwell-black text-base group-hover:text-washwell-green-dark transition-colors font-display">{t.name}</p>
+                  <p className="text-xs text-washwell-gray mt-0.5">{t.description}</p>
                 </div>
                 <div className="text-right ml-4 shrink-0">
-                  <p className="text-xl font-bold text-washwell-green font-display">${t.price} <span className="text-xs font-normal text-washwell-gray">CAD</span></p>
-                  <p className="text-xs text-washwell-gray">delivery included</p>
+                  <p className="text-lg font-bold text-washwell-green font-display">${t.rate.toFixed(2)}<span className="text-xs font-normal text-washwell-gray">/lb</span></p>
+                  <p className="text-xs text-washwell-gray">after {BASE_LBS} lbs</p>
                 </div>
               </div>
             </button>
           ))}
         </div>
 
-        <p className="text-xs text-washwell-gray text-center">Prices include delivery. Taxes not included. Final tier confirmed after weighing. Payment via SMS — no upfront charge.</p>
+        <p className="text-xs text-washwell-gray text-center">Prices exclude tax & delivery. Delivery fee charged per trip. Final weight confirmed by our tech. Payment via SMS — no upfront charge.</p>
         <button onClick={() => signOut()} className="mt-8 block mx-auto text-xs text-washwell-gray hover:text-washwell-gray-dark">Sign out</button>
       </div>
     </div>
@@ -106,17 +108,20 @@ export default function GuestLandingPage() {
         <button onClick={() => setStep("select")} className="text-sm text-washwell-gray hover:text-washwell-gray-dark mb-4">← Back</button>
         <h2 className="text-xl font-bold text-washwell-black mb-1">Confirm Your Request</h2>
 
-        {/* Selected tier summary */}
+        {/* Selected type summary */}
         <div className="bg-washwell-green-pale border border-washwell-green rounded-2xl p-4 mb-5">
           <div className="flex justify-between items-center">
             <div>
               <p className="font-bold text-washwell-black">{selectedTier?.name}</p>
               <p className="text-sm text-washwell-gray-dark">{selectedTier?.description}</p>
             </div>
-            <p className="text-lg font-bold text-washwell-green ml-4">${selectedTier?.price} CAD</p>
+            <div className="text-right ml-4 shrink-0">
+              <p className="text-base font-bold text-washwell-green">${BASE_PRICE} <span className="text-xs font-normal text-washwell-gray">up to {BASE_LBS} lbs</span></p>
+              <p className="text-xs text-washwell-green">${selectedTier?.rate?.toFixed(2)}/lb after</p>
+            </div>
           </div>
           <p className="text-xs text-washwell-gray-dark mt-2 pt-2 border-t border-washwell-green/20">
-            Delivery included · taxes not included · payment link sent via SMS after weighing
+            + delivery fee (per trip) · taxes not included · payment link sent via SMS after weighing
           </p>
         </div>
 
