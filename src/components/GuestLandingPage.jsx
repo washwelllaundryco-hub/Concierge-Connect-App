@@ -82,11 +82,11 @@ export default function GuestLandingPage() {
               className="w-full text-left bg-white rounded-2xl border-2 border-washwell-gray-light hover:border-washwell-green active:scale-[0.99] p-4 shadow-sm transition-all group">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-semibold text-washwell-black group-hover:text-washwell-green-dark transition-colors">{t.name}</p>
-                  <p className="text-sm text-washwell-gray mt-0.5">{t.description}</p>
+                  <p className="font-bold text-washwell-black text-base group-hover:text-washwell-green-dark transition-colors font-display">{t.description}</p>
+                  <p className="text-xs text-washwell-gray mt-0.5 font-medium uppercase tracking-wide">{t.name}</p>
                 </div>
-                <div className="text-right ml-4">
-                  <p className="text-xl font-bold text-washwell-green">${t.price} <span className="text-sm font-normal text-washwell-gray">CAD</span></p>
+                <div className="text-right ml-4 shrink-0">
+                  <p className="text-xl font-bold text-washwell-green font-display">${t.price} <span className="text-xs font-normal text-washwell-gray">CAD</span></p>
                   <p className="text-xs text-washwell-gray">delivery included</p>
                 </div>
               </div>
