@@ -6,12 +6,21 @@ const TECH_PHONE      = (process.env.WHATSAPP_TECHNICIAN || "").replace(/^whatsa
 const CONCIERGE_PHONE = (process.env.WHATSAPP_CONCIERGE  || "").replace(/^whatsapp:/i, "");
 const MANAGER_PHONE   = (process.env.WHATSAPP_MANAGER    || "").replace(/^whatsapp:/i, "");
 
+function toE164(raw) {
+  if (!raw) return null;
+  let n = String(raw).replace(/^whatsapp:/i, "").trim().replace(/[\s\-().]/g, "");
+  if (n.startsWith("+")) return n;                      // already E.164
+  if (/^1\d{10}$/.test(n)) return "+" + n;             // 11-digit North American
+  if (/^\d{10}$/.test(n)) return "+1" + n;             // 10-digit, assume Canada/US
+  return "+" + n;                                       // best-effort
+}
+
 export async function sendSMS(to, body) {
   if (!TWILIO_ACCOUNT_SID) { console.error("SMS FAILED: TWILIO_ACCOUNT_SID is not set"); return null; }
   if (!TWILIO_AUTH_TOKEN)  { console.error("SMS FAILED: TWILIO_AUTH_TOKEN is not set"); return null; }
   if (!to) { console.error("SMS FAILED: no recipient phone number"); return null; }
-  const cleanTo = String(to).replace(/^whatsapp:/i, "").trim();
-  if (!cleanTo.startsWith("+")) { console.error("SMS FAILED: not E.164 format: " + cleanTo); return null; }
+  const cleanTo = toE164(to);
+  if (!cleanTo || !cleanTo.startsWith("+")) { console.error("SMS FAILED: not E.164 format: " + to); return null; }
   console.log("SMS sending to:", cleanTo, "from:", TWILIO_FROM, "SID prefix:", TWILIO_ACCOUNT_SID.slice(0,8));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);

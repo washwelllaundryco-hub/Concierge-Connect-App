@@ -27,7 +27,8 @@ export default async function handler(req, res) {
         } catch(e) { console.error("Stripe:", e.message); }
       }
       await sql`UPDATE laundry_orders SET status='awaiting_payment', total_weight_lbs=${lbs}, tier=${tier.name}, total_amount=${parseFloat(total)}, delivery_fee=${DELIVERY_FEE}, balance_stripe_url=${checkoutUrl}, updated_at=NOW() WHERE id=${orderId}`;
-      if (o.phone && checkoutUrl) notifyCustomerPaymentRequest(o.phone, o.fn, { orderNumber:o.order_number, weightLbs:lbs, tier:tier.name, total, deliveryFee:DELIVERY_FEE, checkoutUrl }).catch(e => console.error("payment SMS failed:", e.message));
+      // Await SMS — 8s abort timeout in sendSMS keeps this under Vercel's 10s limit
+      if (o.phone && checkoutUrl) await notifyCustomerPaymentRequest(o.phone, o.fn, { orderNumber:o.order_number, weightLbs:lbs, tier:tier.name, total, deliveryFee:DELIVERY_FEE, checkoutUrl }).catch(e => console.error("payment SMS failed:", e.message));
       return res.json({ success:true, tier:tier.name, total, checkoutUrl });
     }
     await sql`UPDATE laundry_orders SET status=${status}, updated_at=NOW() WHERE id=${orderId}`;

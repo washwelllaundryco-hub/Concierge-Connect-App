@@ -4,9 +4,11 @@ import { notifyNewOrder } from "../../src/lib/notifications.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
-  const { firstName, lastName, phone, email, roomNumber, hotelId, hotelName, tier, scheduledPickupAt, specialInstructions, guestId } = req.body;
+  const { firstName, lastName, phone: rawPhone, email, roomNumber, hotelId, hotelName, tier, scheduledPickupAt, specialInstructions, guestId } = req.body;
   if (!firstName) return res.status(400).json({ error: "firstName is required" });
-  if (!phone)     return res.status(400).json({ error: "phone is required (payment link sent here after weighing)" });
+  if (!rawPhone)  return res.status(400).json({ error: "phone is required (payment link sent here after weighing)" });
+  // Normalize phone to E.164 so SMS never fails on missing +
+  const phone = (() => { let n = String(rawPhone).replace(/^whatsapp:/i,"").trim().replace(/[\s\-().]/g,""); if (n.startsWith("+")) return n; if (/^1\d{10}$/.test(n)) return "+"+n; if (/^\d{10}$/.test(n)) return "+1"+n; return "+"+n; })();
 
   const clerkUserId = (() => { try { const t = (req.headers.authorization || "").replace("Bearer ", ""); return t ? JSON.parse(Buffer.from(t.split(".")[1] || "e30=", "base64").toString()).sub : null; } catch { return null; } })();
 
@@ -47,7 +49,8 @@ export default async function handler(req, res) {
       RETURNING id
     `;
 
-    notifyNewOrder({ orderNumber, guestName: (firstName + " " + (lastName || "")).trim(), roomNumber: roomNumber || null, hotelName: hotelName || "Residential", scheduledPickupAt: scheduledPickupAt || null }).catch(e => console.error("SMS tech failed:", e.message));
+    // Await SMS — 8s abort timeout in sendSMS keeps this under Vercel's 10s limit
+    await notifyNewOrder({ orderNumber, guestName: (firstName + " " + (lastName || "")).trim(), roomNumber: roomNumber || null, hotelName: hotelName || "Residential", scheduledPickupAt: scheduledPickupAt || null }).catch(e => console.error("SMS tech failed:", e.message));
 
     res.json({ success: true, orderId: order.rows[0].id, orderNumber, status: "pending_pickup" });
   } catch (err) {
