@@ -13,11 +13,15 @@ export async function sendSMS(to, body) {
   const cleanTo = String(to).replace(/^whatsapp:/i, "").trim();
   if (!cleanTo.startsWith("+")) { console.error("SMS FAILED: not E.164 format: " + cleanTo); return null; }
   console.log("SMS sending to:", cleanTo, "from:", TWILIO_FROM, "SID prefix:", TWILIO_ACCOUNT_SID.slice(0,8));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
   const res = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + TWILIO_ACCOUNT_SID + "/Messages.json", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", "Authorization": "Basic " + Buffer.from(TWILIO_ACCOUNT_SID + ":" + TWILIO_AUTH_TOKEN).toString("base64") },
     body: new URLSearchParams({ To: cleanTo, From: TWILIO_FROM, Body: body }).toString(),
+    signal: controller.signal,
   });
+  clearTimeout(timeout);
   const r = await res.json();
   if (!res.ok) { console.error("SMS FAILED Twilio error:", r.message, "code:", r.code); throw new Error("Twilio: " + r.message); }
   console.log("SMS sent OK, SID:", r.sid);
