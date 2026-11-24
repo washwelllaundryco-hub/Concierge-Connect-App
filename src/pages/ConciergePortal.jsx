@@ -31,7 +31,7 @@ export default function ConciergePortal() {
   const [showNew, setShowNew]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sustain, setSustain]   = useState(null);
-  const [form, setForm]         = useState({ firstName:"", lastName:"", phone:"", email:"", roomNumber:"", tier:"Standard Load", specialInstructions:"" });
+  const [form, setForm]         = useState({ firstName:"", lastName:"", phone:"", email:"", roomNumber:"", tier:"Standard Load", specialInstructions:"", scheduledPickupAt:"" });
   const pollRef = useRef(null);
 
   async function fetchOrders() {
@@ -72,7 +72,7 @@ export default function ConciergePortal() {
       try { d = JSON.parse(text); } catch { d = { error: text || "Server error" }; }
       if (!res.ok) { alert(d.error || "Failed to place order."); return; }
       setShowNew(false);
-      setForm({ firstName:"", lastName:"", phone:"", email:"", roomNumber:"", tier:"Standard Load", specialInstructions:"" });
+      setForm({ firstName:"", lastName:"", phone:"", email:"", roomNumber:"", tier:"Standard Load", specialInstructions:"", scheduledPickupAt:"" });
       fetchOrders();
       alert("Order " + d.orderNumber + " placed! Technician has been notified by SMS.");
     } catch(e) { alert("Error: " + e.message); } finally { setSubmitting(false); }
@@ -171,6 +171,27 @@ export default function ConciergePortal() {
                 <p className="text-xs text-gray-400 mt-1">Technician will confirm exact tier after weighing the laundry</p>
               </div>
               {inp("Special Instructions","specialInstructions","text","No scent, cold wash, hang dry...")}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Pickup Time</label>
+                <div className="flex gap-2 mb-2">
+                  <button type="button"
+                    onClick={() => setForm(p => ({ ...p, scheduledPickupAt: "" }))}
+                    className={"flex-1 py-2 rounded-lg text-sm font-medium border transition-all " + (!form.scheduledPickupAt ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-600 border-gray-200 hover:border-gray-300")}>
+                    ASAP
+                  </button>
+                  <button type="button"
+                    onClick={() => { const d = new Date(); d.setHours(d.getHours()+2,0,0,0); setForm(p => ({ ...p, scheduledPickupAt: d.toISOString().slice(0,16) })); }}
+                    className={"flex-1 py-2 rounded-lg text-sm font-medium border transition-all " + (form.scheduledPickupAt ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-600 border-gray-200 hover:border-gray-300")}>
+                    Schedule
+                  </button>
+                </div>
+                {form.scheduledPickupAt && (
+                  <input type="datetime-local" value={form.scheduledPickupAt}
+                    onChange={e => setForm(p => ({ ...p, scheduledPickupAt: e.target.value }))}
+                    min={new Date().toISOString().slice(0,16)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                )}
+              </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={()=>setShowNew(false)} className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50">Cancel</button>
