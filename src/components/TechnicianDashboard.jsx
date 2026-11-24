@@ -61,6 +61,7 @@ export default function TechnicianDashboard() {
   const [loading, setLoading]     = useState(true);
   const [weighModal, setWeighModal] = useState(null);  // order being weighed
   const [weight, setWeight]       = useState("");
+  const [sendingPayment, setSendingPayment] = useState(false);
   const [updating, setUpdating]   = useState({});
   const pollRef = useRef(null);
 
@@ -120,11 +121,17 @@ export default function TechnicianDashboard() {
   }
 
   async function confirmWeight() {
+    if (sendingPayment) return;  // prevent double-submit
     const lbs = parseFloat(weight);
     if (!lbs || lbs <= 0) return alert("Enter a valid weight.");
-    await patchStatus(weighModal.id, { status: "awaiting_payment", weight: lbs });
-    setWeighModal(null);
-    setWeight("");
+    setSendingPayment(true);
+    try {
+      await patchStatus(weighModal.id, { status: "awaiting_payment", weight: lbs });
+      setWeighModal(null);
+      setWeight("");
+    } finally {
+      setSendingPayment(false);
+    }
   }
 
   const tier = weight ? getTier(parseFloat(weight) || 0) : null;
@@ -239,9 +246,9 @@ export default function TechnicianDashboard() {
                 className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50">
                 Cancel
               </button>
-              <button onClick={confirmWeight} disabled={!weight || parseFloat(weight) <= 0}
+              <button onClick={confirmWeight} disabled={!weight || parseFloat(weight) <= 0 || sendingPayment}
                 className="flex-1 bg-yellow-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-yellow-600 disabled:opacity-50">
-                Send Payment Link →
+                {sendingPayment ? "Sending…" : "Send Payment Link →"}
               </button>
             </div>
           </div>
