@@ -7,16 +7,20 @@ const CONCIERGE_PHONE = (process.env.WHATSAPP_CONCIERGE  || "").replace(/^whatsa
 const MANAGER_PHONE   = (process.env.WHATSAPP_MANAGER    || "").replace(/^whatsapp:/i, "");
 
 export async function sendSMS(to, body) {
-  if (!to || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null;
+  if (!TWILIO_ACCOUNT_SID) { console.error("SMS FAILED: TWILIO_ACCOUNT_SID is not set"); return null; }
+  if (!TWILIO_AUTH_TOKEN)  { console.error("SMS FAILED: TWILIO_AUTH_TOKEN is not set"); return null; }
+  if (!to) { console.error("SMS FAILED: no recipient phone number"); return null; }
   const cleanTo = String(to).replace(/^whatsapp:/i, "").trim();
-  if (!cleanTo.startsWith("+")) { console.warn("SMS skipped not E.164: " + cleanTo); return null; }
+  if (!cleanTo.startsWith("+")) { console.error("SMS FAILED: not E.164 format: " + cleanTo); return null; }
+  console.log("SMS sending to:", cleanTo, "from:", TWILIO_FROM, "SID prefix:", TWILIO_ACCOUNT_SID.slice(0,8));
   const res = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + TWILIO_ACCOUNT_SID + "/Messages.json", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", "Authorization": "Basic " + Buffer.from(TWILIO_ACCOUNT_SID + ":" + TWILIO_AUTH_TOKEN).toString("base64") },
     body: new URLSearchParams({ To: cleanTo, From: TWILIO_FROM, Body: body }).toString(),
   });
   const r = await res.json();
-  if (!res.ok) throw new Error("Twilio: " + r.message);
+  if (!res.ok) { console.error("SMS FAILED Twilio error:", r.message, "code:", r.code); throw new Error("Twilio: " + r.message); }
+  console.log("SMS sent OK, SID:", r.sid);
   return r;
 }
 
@@ -30,7 +34,7 @@ export async function notifyNewOrder({ orderNumber, guestName, roomNumber, hotel
 
 export async function notifyCustomerPaymentRequest(phone, firstName, { orderNumber, weightLbs, tier, total, deliveryFee, checkoutUrl }) {
   if (!phone) return;
-  const msg = ["Hi " + (firstName || "there") + ", your Washwell laundry has been weighed!", "Order: " + orderNumber, "Weight: " + weightLbs + " lbs — " + tier, "Total: $" + total + " CAD (incl. $" + deliveryFee + " delivery)", "Complete payment here: " + checkoutUrl, "— Washwell Laundry Co."].join("\n");
+  const msg = ["Hi " + (firstName || "there") + ", your Washwell laundry has been weighed!", "Order: " + orderNumber, "Weight: " + weightLbs + " lbs — " + tier, "Total: $" + total + " CAD (delivery included)", "Complete payment here: " + checkoutUrl, "— Washwell Laundry Co."].join("\n");
   await sendSMS(phone, msg);
 }
 
