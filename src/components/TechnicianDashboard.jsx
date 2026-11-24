@@ -48,7 +48,8 @@ const TIERS = [
   { maxLbs: 75, name: "Executive Load",  price: 188 },
   { maxLbs: 999,name: "Bulk Service",    price: 245 },
 ];
-const DELIVERY_FEE = 20;
+// Hotel tier prices INCLUDE delivery — no extra delivery fee
+const DELIVERY_FEE = 0;
 
 function getTier(lbs) {
   return TIERS.find(t => lbs <= t.maxLbs) || TIERS[TIERS.length - 1];
@@ -230,7 +231,7 @@ export default function TechnicianDashboard() {
             {tier && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-sm">
                 <p className="font-semibold text-yellow-800">{tier.name}</p>
-                <p className="text-yellow-700">Service: ${tier.price} + ${DELIVERY_FEE} delivery = <strong>${tier.price + DELIVERY_FEE} CAD</strong></p>
+                <p className="text-yellow-700">Total: <strong>${tier.price} CAD</strong> (delivery included)</p>
               </div>
             )}
             <div className="flex gap-3">

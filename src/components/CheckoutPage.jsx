@@ -57,7 +57,7 @@ export default function CheckoutPage() {
             </p>
             {order.status === "awaiting_payment" && order.totalAmount && (
               <p className="text-green-700 text-xs mt-1">
-                Total: ${parseFloat(order.totalAmount).toFixed(2)} CAD (including $20 delivery)
+                Total: ${parseFloat(order.totalAmount).toFixed(2)} CAD (delivery included)
               </p>
             )}
           </div>
