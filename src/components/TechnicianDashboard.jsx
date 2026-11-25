@@ -104,7 +104,7 @@ export default function TechnicianDashboard() {
     setUpdating(u => ({ ...u, [orderId]: true }));
     try {
       const token = await getToken();
-      const res = await fetch("/api/orders/" + orderId + "/dispatch", {
+      const res = await fetch("/api/orders/" + orderId + "/manage?action=dispatch", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({
@@ -136,7 +136,7 @@ export default function TechnicianDashboard() {
         r.onerror = fail;
         r.readAsDataURL(file);
       });
-      const res = await fetch("/api/orders/" + photoOrderId + "/photos", {
+      const res = await fetch("/api/orders/" + photoOrderId + "/manage?action=photos", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ photoData: dataUrl, photoType: "tech", filename: file.name }),
