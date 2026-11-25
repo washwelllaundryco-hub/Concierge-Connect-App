@@ -85,9 +85,9 @@ export default function OnboardingPage() {
           </label>
           <div className="space-y-2">
             {[
-              { value: "guest",      label: "Hotel Guest",       desc: "I'm a guest and want laundry service" },
-              { value: "concierge",  label: "Hotel Concierge",   desc: "I manage laundry requests for hotel guests" },
-              { value: "technician", label: "Washwell Technician", desc: "I process and handle laundry orders" },
+              { value: "guest",      label: "Customer",            desc: "Individual or business — I need laundry service" },
+              { value: "concierge",  label: "Hotel Concierge",    desc: "I place orders on behalf of hotel guests" },
+              { value: "technician", label: "Washwell Technician", desc: "I process and deliver laundry orders" },
             ].map(({ value, label, desc }) => (
               <button
                 key={value}
