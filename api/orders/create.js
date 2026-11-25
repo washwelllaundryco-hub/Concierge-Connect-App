@@ -57,6 +57,9 @@ export default async function handler(req, res) {
       sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS payment_method       TEXT DEFAULT 'stripe'`,
       sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS payment_verified     BOOLEAN DEFAULT false`,
       sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS payment_confirmed_at TIMESTAMPTZ`,
+      // Business orders have no hotel/guest — allow nulls
+      sql`ALTER TABLE laundry_orders ALTER COLUMN hotel_id DROP NOT NULL`,
+      sql`ALTER TABLE laundry_orders ALTER COLUMN guest_id DROP NOT NULL`,
     ]);
 
     // Resolve hotel (lookup by id or slug)

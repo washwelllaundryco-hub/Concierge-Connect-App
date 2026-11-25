@@ -201,7 +201,7 @@ export default function GuestLandingPage() {
               {accountType === "business" ? "Address / Suite Number" : "Room Number"}
             </label>
             <input type="text" value={roomNumber} onChange={e => setRoomNumber(e.target.value)}
-              placeholder={accountType === "business" ? "123 King St W, Suite 400" : "412"}
+              placeholder={accountType === "business" ? "123 King St W, Suite 400, M5H 1A1" : "412"}
               className="w-full border-2 border-washwell-gray-light rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-washwell-green" />
           </div>
           <div>
