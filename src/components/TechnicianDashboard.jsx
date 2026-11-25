@@ -195,6 +195,12 @@ export default function TechnicianDashboard() {
                     <span className="text-xs text-gray-400">#{o.orderNumber}</span>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs text-gray-500 mt-0.5">
+                    {o.accountType === "business" && o.companyName && (
+                      <span className="bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">🏢 {o.companyName}</span>
+                    )}
+                    {o.paymentMethod === "invoice" && (
+                      <span className="bg-purple-100 text-purple-700 font-semibold px-2 py-0.5 rounded-full">📋 Invoice</span>
+                    )}
                     {o.hotelName && <span>🏨 {o.hotelName}</span>}
                     {o.phone     && <span>📱 {o.phone}</span>}
                     {o.tier      && <span>📦 {o.tier}</span>}
@@ -219,11 +225,17 @@ export default function TechnicianDashboard() {
                   </button>
                 )}
 
-                {/* Step 2: payment pending — nothing to do, waiting for Stripe webhook */}
+                {/* Step 2: payment pending */}
                 {o.status === "awaiting_payment" && (
-                  <span className="text-xs text-yellow-700 bg-yellow-100 px-3 py-2 rounded-lg">
-                    ⏳ Waiting for customer payment…
-                  </span>
+                  o.paymentMethod === "invoice" ? (
+                    <span className="text-xs text-blue-700 bg-blue-100 px-3 py-2 rounded-lg">
+                      📋 Invoice account — amount recorded, billed monthly
+                    </span>
+                  ) : (
+                    <span className="text-xs text-yellow-700 bg-yellow-100 px-3 py-2 rounded-lg">
+                      ⏳ Waiting for customer payment…
+                    </span>
+                  )
                 )}
 
                 {/* Steps 3-5: in_wash → drying → folding */}

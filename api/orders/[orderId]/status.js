@@ -37,7 +37,8 @@ export default async function handler(req, res) {
       const total = tier.price.toFixed(2);
 
       const prev = await sql`
-        SELECT lo.order_number, lo.guest_phone,
+        SELECT lo.order_number, lo.payment_method, lo.account_type, lo.company_name,
+               lo.guest_phone, lo.custom_rate_standard, lo.custom_rate_heavy, lo.tier,
                COALESCE(lo.guest_first_name, u.first_name, 'Guest') AS fn,
                COALESCE(lo.guest_phone, u.phone) AS phone
         FROM laundry_orders lo
@@ -47,6 +48,41 @@ export default async function handler(req, res) {
       `;
       const o = prev.rows[0];
       if (!o) return res.status(404).json({ error: "Order not found" });
+
+      // For business per-lb tiers, recalculate using custom rates if available
+      // tier name: "Standard Items" uses standard rate, "Heavy Duty" uses heavy rate
+      let effectiveTier = tier;
+      if (o.account_type === "business") {
+        const stdRate = parseFloat(o.custom_rate_standard) || 2.90;
+        const hvyRate = parseFloat(o.custom_rate_heavy)    || 3.25;
+        // Business pricing is strictly per-lb (no flat base)
+        const rate = (o.tier || "").toLowerCase().includes("heavy") ? hvyRate : stdRate;
+        const amount = (lbs * rate).toFixed(2);
+        effectiveTier = { name: o.tier || "Standard Items", price: parseFloat(amount) };
+      }
+
+      // Invoice-method businesses: skip Stripe, just record amount owed
+      if (o.payment_method === "invoice") {
+        const finalTier  = typeof effectiveTier === "object" ? effectiveTier : getTier(lbs);
+        const totalAmt   = finalTier.price.toFixed(2);
+        await sql`
+          UPDATE laundry_orders
+          SET status = 'in_wash',
+              total_weight_lbs = ${lbs},
+              tier = ${finalTier.name},
+              total_amount = ${parseFloat(totalAmt)},
+              delivery_fee = ${DELIVERY_FEE},
+              payment_verified = false,
+              updated_at = NOW()
+          WHERE id = ${orderId}
+        `;
+        // No customer SMS — this is a business invoice account
+        return res.json({ success: true, tier: finalTier.name, total: totalAmt, paymentMethod: "invoice", message: "Invoice account — amount recorded, no payment link sent" });
+      }
+
+      // Stripe-pay flow (residential or stripe-method business)
+      const resolvedTier = typeof effectiveTier === "object" ? effectiveTier : getTier(lbs);
+      const total = resolvedTier.price.toFixed(2);
 
       let checkoutUrl = null;
       if (process.env.STRIPE_SECRET_KEY) {
@@ -63,7 +99,7 @@ export default async function handler(req, res) {
               "client_reference_id": String(orderId),
               "line_items[0][price_data][currency]": "cad",
               "line_items[0][price_data][unit_amount]": String(Math.round(parseFloat(total) * 100)),
-              "line_items[0][price_data][product_data][name]": tier.name + " — Washwell",
+              "line_items[0][price_data][product_data][name]": resolvedTier.name + " — Washwell",
               "line_items[0][quantity]": "1",
               "success_url": (process.env.VITE_APP_URL || "https://washwell.vercel.app") + "/track/" + orderId + "?payment=success",
               "cancel_url":  (process.env.VITE_APP_URL || "https://washwell.vercel.app") + "/track/" + orderId,
@@ -78,7 +114,7 @@ export default async function handler(req, res) {
         UPDATE laundry_orders
         SET status = 'awaiting_payment',
             total_weight_lbs = ${lbs},
-            tier = ${tier.name},
+            tier = ${resolvedTier.name},
             total_amount = ${parseFloat(total)},
             delivery_fee = ${DELIVERY_FEE},
             balance_stripe_url = ${checkoutUrl},
@@ -91,14 +127,14 @@ export default async function handler(req, res) {
         await notifyCustomerPaymentRequest(o.phone, o.fn, {
           orderNumber: o.order_number,
           weightLbs: lbs,
-          tier: tier.name,
+          tier: resolvedTier.name,
           total,
           deliveryFee: DELIVERY_FEE,
           checkoutUrl,
         }).catch(e => console.error("payment SMS failed:", e.message));
       }
 
-      return res.json({ success: true, tier: tier.name, total, checkoutUrl });
+      return res.json({ success: true, tier: resolvedTier.name, total, checkoutUrl });
     }
 
     // === MARK READY → dispatch Uber return if payment already in ===

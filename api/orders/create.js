@@ -52,6 +52,8 @@ export default async function handler(req, res) {
       sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS uber_return_id       TEXT`,
       sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS account_type         TEXT`,
       sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS company_name         TEXT`,
+      sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS custom_rate_standard NUMERIC(6,2)`,
+      sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS custom_rate_heavy    NUMERIC(6,2)`,
     ]);
 
     // Resolve hotel (lookup by id or slug)
@@ -73,19 +75,37 @@ export default async function handler(req, res) {
     const finalPlacedBy = placedByOverride || (clerkUserId ? "guest" : "concierge");
     const finalAccountType = accountType || "residential";
 
+    // Look up business account for custom pricing + payment method
+    let paymentMethod = "stripe";
+    let customStandardRate = null;
+    let customHeavyRate = null;
+    if (finalAccountType === "business" && companyName) {
+      try {
+        await sql`CREATE TABLE IF NOT EXISTS business_accounts (id SERIAL PRIMARY KEY, company_name TEXT NOT NULL UNIQUE, pricing_standard_lbs NUMERIC(6,2) DEFAULT 2.90, pricing_heavy_lbs NUMERIC(6,2) DEFAULT 3.25, payment_method TEXT DEFAULT 'stripe', active BOOLEAN DEFAULT true)`;
+        const ba = await sql`SELECT payment_method, pricing_standard_lbs, pricing_heavy_lbs FROM business_accounts WHERE LOWER(company_name) = LOWER(${companyName}) AND active = true LIMIT 1`;
+        if (ba.rows[0]) {
+          paymentMethod     = ba.rows[0].payment_method || "stripe";
+          customStandardRate = ba.rows[0].pricing_standard_lbs;
+          customHeavyRate    = ba.rows[0].pricing_heavy_lbs;
+        }
+      } catch (e) { console.error("business_accounts lookup:", e.message); }
+    }
+
     const order = await sql`
       INSERT INTO laundry_orders (
         order_number, guest_id, hotel_id, status, tier, payment_method, payment_verified,
         placed_by, special_instructions,
         guest_first_name, guest_last_name, guest_phone, guest_email, guest_room_number,
         scheduled_pickup_at, account_type, company_name,
+        custom_rate_standard, custom_rate_heavy,
         created_at, updated_at
       ) VALUES (
         ${orderNumber}, ${resolvedGuestId}, ${resolvedHotelId},
-        'pending_pickup', ${tier || "Standard Load"}, 'stripe', false,
+        'pending_pickup', ${tier || "Standard Load"}, ${paymentMethod}, false,
         ${finalPlacedBy}, ${specialInstructions || null},
         ${firstName}, ${lastName || null}, ${phone}, ${email || null}, ${roomNumber || null},
         ${scheduledPickupAt || null}, ${finalAccountType}, ${companyName || null},
+        ${customStandardRate || null}, ${customHeavyRate || null},
         NOW(), NOW()
       )
       RETURNING id
