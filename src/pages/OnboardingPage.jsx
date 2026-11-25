@@ -34,6 +34,10 @@ export default function OnboardingPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          clerkUserId: user.id,
+          firstName: user.firstName || "",
+          lastName: user.lastName || "",
+          email: user.primaryEmailAddress?.emailAddress || "",
           role,
           hotelName: hotelName.trim(),
           hotelId: hotelName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
@@ -43,6 +47,11 @@ export default function OnboardingPage() {
 
       if (!res.ok) throw new Error("Failed to save. Please try again.");
 
+      const d = await res.json();
+      // Apply role + hotel info to Clerk publicMetadata via frontend SDK (no paid plan needed)
+      if (d.publicMetadata) {
+        await user.update({ unsafeMetadata: d.publicMetadata });
+      }
       await user.reload();
 
       if (role === "concierge") navigate("/concierge");

@@ -22,7 +22,7 @@ function RoleRedirect() {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  const role = user.publicMetadata?.role;
+  const role = user.publicMetadata?.role || user.unsafeMetadata?.role;
 
   // New user — send to onboarding
   if (!role) return <Navigate to="/onboarding" replace />;
