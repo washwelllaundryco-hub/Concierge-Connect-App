@@ -10,9 +10,9 @@ module.exports = {
         'washwell-green':      '#00c419',
         'washwell-green-dark': '#009914',
         'washwell-green-pale': '#e8faea',
-        'washwell-gray':       '#adada9',
-        'washwell-gray-light': '#d6d6d4',
-        'washwell-gray-dark':  '#6b6b69',
+        'washwell-gray':       '#6b7280',
+        'washwell-gray-light': '#d1d5db',
+        'washwell-gray-dark':  '#374151',
       },
       fontFamily: {
         display: ['Poppins', 'sans-serif'],
