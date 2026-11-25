@@ -169,9 +169,12 @@ export default function TechnicianDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm px-6 py-4">
-        <h1 className="text-xl font-bold text-gray-900">Washwell Technician</h1>
-        <p className="text-sm text-gray-500">Active orders · refreshes every 15s</p>
+      <header className="bg-washwell-black px-6 py-3 flex items-center gap-3">
+        <img src="/logo.png" alt="Washwell" className="h-10 w-10 rounded-xl bg-white p-1" />
+        <div>
+          <p className="text-white font-bold text-sm leading-tight font-display">Washwell Technician</p>
+          <p className="text-washwell-gray text-xs leading-tight">Active orders · auto-refreshes every 15s</p>
+        </div>
       </header>
 
       <main className="p-4 max-w-3xl mx-auto space-y-4">

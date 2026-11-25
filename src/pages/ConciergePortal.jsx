@@ -90,14 +90,17 @@ export default function ConciergePortal() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Washwell Concierge</h1>
-          <p className="text-sm text-gray-500">{hotelName}</p>
+      <header className="bg-washwell-black px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" alt="Washwell" className="h-10 w-10 rounded-xl bg-white p-1" />
+          <div>
+            <p className="text-white font-bold text-sm leading-tight font-display">Washwell Concierge</p>
+            <p className="text-washwell-gray text-xs leading-tight">{hotelName}</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={()=>setShowNew(true)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700">+ New Order</button>
-          <button onClick={()=>signOut()} className="text-sm text-gray-500 hover:text-gray-700">Sign out</button>
+          <button onClick={()=>setShowNew(true)} className="bg-washwell-green text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-washwell-green-dark font-display">+ New Order</button>
+          <button onClick={()=>signOut()} className="text-xs text-washwell-gray hover:text-white transition-colors">Sign out</button>
         </div>
       </header>
 

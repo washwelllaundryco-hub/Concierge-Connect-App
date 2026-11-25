@@ -83,10 +83,8 @@ export default function GuestLandingPage() {
       <div className="max-w-lg mx-auto px-4 pt-10 pb-20">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-washwell-green rounded-2xl mb-4">
-            <span className="text-white font-bold text-xl font-display">W</span>
-          </div>
-          <h1 className="text-3xl font-display font-bold text-washwell-black">Washwell Laundry</h1>
+          <img src="/logo.png" alt="Washwell Laundry Co." className="h-20 w-20 mx-auto mb-3 rounded-2xl" />
+          <h1 className="text-2xl font-display font-bold text-washwell-black">Washwell Laundry Co.</h1>
           {hotelName && <p className="text-washwell-gray-dark mt-1 text-sm font-medium">{hotelName}</p>}
           <p className="text-washwell-gray mt-1 text-sm">Hello, {firstName}! Choose your service below.</p>
         </div>

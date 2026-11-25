@@ -15,9 +15,9 @@ module.exports = {
         'washwell-gray-dark':  '#6b6b69',
       },
       fontFamily: {
-        display: ['Montserrat', 'sans-serif'],
-        body:    ['Montserrat', 'sans-serif'],
-        mono:    ['Montserrat', 'monospace'],
+        display: ['Poppins', 'sans-serif'],
+        body:    ['Poppins', 'sans-serif'],
+        mono:    ['Poppins', 'monospace'],
       },
       boxShadow: {
         'washwell-green': '0 0 20px rgba(0, 196, 25, 0.3)',
