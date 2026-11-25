@@ -4,5 +4,11 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/cleanup-photos",
+      "schedule": "0 3 * * 1"
+    }
   ]
 }

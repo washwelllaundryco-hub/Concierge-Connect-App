@@ -63,7 +63,10 @@ export default function TechnicianDashboard() {
   const [weight, setWeight]       = useState("");
   const [sendingPayment, setSendingPayment] = useState(false);
   const [updating, setUpdating]   = useState({});
+  const [photoUploading, setPhotoUploading] = useState({});
   const pollRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [photoOrderId, setPhotoOrderId] = useState(null);
 
   async function fetchOrders() {
     try {
@@ -117,6 +120,34 @@ export default function TechnicianDashboard() {
       alert("Uber driver dispatched! Tracking: " + (d.trackingUrl || "see Uber dashboard"));
     } catch(e) { alert("Error: " + e.message); } finally {
       setUpdating(u => ({ ...u, [orderId]: false }));
+    }
+  }
+
+  async function handlePhotoUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file || !photoOrderId) return;
+    setPhotoUploading(u => ({ ...u, [photoOrderId]: true }));
+    try {
+      const token = await getToken();
+      // Read file as base64
+      const dataUrl = await new Promise((ok, fail) => {
+        const r = new FileReader();
+        r.onload = () => ok(r.result);
+        r.onerror = fail;
+        r.readAsDataURL(file);
+      });
+      const res = await fetch("/api/orders/" + photoOrderId + "/photos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ photoData: dataUrl, photoType: "tech", filename: file.name }),
+      });
+      const d = await res.json();
+      if (!res.ok) { alert(d.error || "Photo upload failed."); return; }
+      alert("✅ Photo saved!");
+    } catch (e) { alert("Error: " + e.message); } finally {
+      setPhotoUploading(u => ({ ...u, [photoOrderId]: false }));
+      setPhotoOrderId(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -216,11 +247,31 @@ export default function TechnicianDashboard() {
                     🚗 Driver en route to guest
                   </span>
                 )}
+
+                {/* Photo upload — available for any active order past pickup */}
+                {!["pending_pickup", "out_for_delivery", "delivered", "cancelled"].includes(o.status) && (
+                  <button
+                    onClick={() => { setPhotoOrderId(o.id); setTimeout(() => fileInputRef.current?.click(), 50); }}
+                    disabled={photoUploading[o.id]}
+                    className="bg-gray-100 text-gray-600 px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-200 disabled:opacity-50">
+                    {photoUploading[o.id] ? "Uploading…" : "📷 Add Photo"}
+                  </button>
+                )}
               </div>
             </div>
           );
         })}
       </main>
+
+      {/* Hidden file input for photo upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handlePhotoUpload}
+      />
 
       {/* Weight modal */}
       {weighModal && (
