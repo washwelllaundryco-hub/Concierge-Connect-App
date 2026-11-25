@@ -54,6 +54,9 @@ export default async function handler(req, res) {
       sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS company_name         TEXT`,
       sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS custom_rate_standard NUMERIC(6,2)`,
       sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS custom_rate_heavy    NUMERIC(6,2)`,
+      sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS payment_method       TEXT DEFAULT 'stripe'`,
+      sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS payment_verified     BOOLEAN DEFAULT false`,
+      sql`ALTER TABLE laundry_orders ADD COLUMN IF NOT EXISTS payment_confirmed_at TIMESTAMPTZ`,
     ]);
 
     // Resolve hotel (lookup by id or slug)

@@ -12,11 +12,12 @@ const RESIDENTIAL_TYPES = [
 const RES_BASE_PRICE = 49;
 const RES_BASE_LBS   = 15;
 
-// ── Business pricing (pure per-lb, no flat base) ─────────────────────────────
+// ── Business pricing (pure per-lb, 25 lb minimum) ────────────────────────────
 const BUSINESS_TYPES = [
   { name: "Standard Items", rate: 2.90, description: "Shirts, pants, uniforms, misc. linens" },
   { name: "Heavy Duty",     rate: 3.25, description: "Towels, sheets & bedding" },
 ];
+const BIZ_MIN_LBS = 25;
 
 export default function GuestLandingPage() {
   const { user, isLoaded } = useUser();
@@ -111,7 +112,7 @@ export default function GuestLandingPage() {
         ) : (
           <>
             <h2 className="text-sm font-semibold text-washwell-gray-dark uppercase tracking-wider mb-1">Business Pricing — Per LB</h2>
-            <p className="text-xs text-washwell-gray mb-3">Strictly per-lb · no minimum · payment link sent via SMS after weighing</p>
+            <p className="text-xs text-washwell-gray mb-3">{BIZ_MIN_LBS} lb minimum · per-lb rate · payment link sent via SMS after weighing</p>
           </>
         )}
 
@@ -176,7 +177,7 @@ export default function GuestLandingPage() {
             </div>
           </div>
           <p className="text-xs text-washwell-gray-dark mt-2 pt-2 border-t border-washwell-green/20">
-            + delivery fee (per trip) · taxes not included · payment link sent via SMS after weighing
+            {accountType === "business" ? `${BIZ_MIN_LBS} lb minimum · ` : ""}+ delivery fee (per trip) · taxes not included · payment link sent via SMS after weighing
           </p>
         </div>
 
@@ -197,10 +198,10 @@ export default function GuestLandingPage() {
           </div>
           <div>
             <label className="block text-xs font-semibold text-washwell-gray-dark mb-1">
-              {accountType === "business" ? "Office / Suite Number" : "Room Number"}
+              {accountType === "business" ? "Address / Suite Number" : "Room Number"}
             </label>
             <input type="text" value={roomNumber} onChange={e => setRoomNumber(e.target.value)}
-              placeholder={accountType === "business" ? "Suite 400" : "412"}
+              placeholder={accountType === "business" ? "123 King St W, Suite 400" : "412"}
               className="w-full border-2 border-washwell-gray-light rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-washwell-green" />
           </div>
           <div>
